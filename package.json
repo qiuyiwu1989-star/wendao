@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
+    "@supabase/supabase-js": "^2.110.7",
     "dompurify": "^3.4.12",
     "lucide-react": "^0.469.0",
     "marked": "^14.1.4",
