@@ -14,18 +14,31 @@ import {
   recorderSupported,
   type VoiceCapture,
 } from "@/lib/recorder";
+import { useAuth } from "@/lib/useAuth";
+import {
+  listConversations,
+  loadConversation,
+  saveConversation,
+  deleteConversation,
+  type ConvMeta,
+} from "@/lib/conversations";
 import {
   ArrowUp,
   BookOpen,
   Compass,
+  LogIn,
   Mic,
+  PanelLeft,
   Phone,
   PhoneOff,
+  Plus,
   RotateCcw,
   Settings2,
   Square,
+  Trash2,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -80,6 +93,16 @@ export default function Page() {
   const [callMode, setCallMode] = useState(false);
   const [voice, setVoice] = useState("苏打");
   const [showVoices, setShowVoices] = useState(false);
+  // 账号 + 云端历史
+  const auth = useAuth();
+  const [convId, setConvId] = useState<string | null>(null);
+  const [history, setHistory] = useState<ConvMeta[]>([]);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const convIdRef = useRef<string | null>(null);
+  convIdRef.current = convId;
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = auth.token;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speechRef = useRef<SpeechQueue | null>(null);
   const captureRef = useRef<VoiceCapture | null>(null);
@@ -217,6 +240,74 @@ export default function Page() {
     }
   }, [messages]);
 
+  // ---------- 云端历史 ----------
+  const refreshHistory = useCallback(async () => {
+    const t = tokenRef.current;
+    if (!t) return;
+    setHistory(await listConversations(t));
+  }, []);
+
+  // 把当前会话存云端（登录才存）。返回/记录 convId 以便后续更新同一条
+  const persistCloud = useCallback(
+    async (msgs: Msg[]) => {
+      const t = tokenRef.current;
+      if (!t || msgs.length < 2) return;
+      const id = await saveConversation(t, {
+        id: convIdRef.current,
+        messages: msgs,
+      });
+      if (id) {
+        if (id !== convIdRef.current) setConvId(id);
+        refreshHistory();
+      }
+    },
+    [refreshHistory]
+  );
+
+  // 登录后：拉历史；若手头有本地对话且还没云端 id，迁移上去
+  useEffect(() => {
+    if (!auth.userId || !auth.token) return;
+    refreshHistory();
+    if (messages.length >= 2 && !convIdRef.current) persistCloud(messages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.userId, auth.token]);
+
+  const openConversation = useCallback(
+    async (id: string) => {
+      const t = tokenRef.current;
+      if (!t) return;
+      const conv = await loadConversation(t, id);
+      if (conv) {
+        setMessages(conv.messages);
+        setConvId(conv.id);
+        setShowHistory(false);
+      }
+    },
+    []
+  );
+
+  const newChat = useCallback(() => {
+    setMessages([]);
+    setConvId(null);
+    setShowHistory(false);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const removeConversation = useCallback(
+    async (id: string) => {
+      const t = tokenRef.current;
+      if (!t) return;
+      await deleteConversation(t, id);
+      if (id === convIdRef.current) newChat();
+      refreshHistory();
+    },
+    [refreshHistory, newChat]
+  );
+
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -295,6 +386,9 @@ export default function Page() {
           // Web Audio 不可用：整段 wav 降级
           speak(acc, assistantIndex);
         }
+        // 登录了就把这一整段对话存到云端
+        if (acc.trim())
+          persistCloud([...next, { role: "assistant", content: acc }]);
       } catch (err) {
         if ((err as Error).name === "AbortError") {
           // 用户主动停止：保留已生成内容
@@ -315,7 +409,7 @@ export default function Page() {
         abortRef.current = null;
       }
     },
-    [messages, streaming, ttsOn, speak, newQueue]
+    [messages, streaming, ttsOn, speak, newQueue, persistCloud]
   );
 
   const stop = useCallback(() => {
@@ -577,8 +671,33 @@ export default function Page() {
             )}
           </div>
           {!empty && (
-            <button className="icon-btn" onClick={reset} title="新的对话">
+            <button
+              className="icon-btn"
+              onClick={auth.userId ? newChat : reset}
+              title="新的对话"
+            >
               <RotateCcw size={18} strokeWidth={1.7} />
+            </button>
+          )}
+          {auth.enabled && auth.ready && auth.userId && (
+            <button
+              className="icon-btn"
+              onClick={() => {
+                refreshHistory();
+                setShowHistory(true);
+              }}
+              title="我的对话"
+            >
+              <PanelLeft size={18} strokeWidth={1.7} />
+            </button>
+          )}
+          {auth.enabled && auth.ready && !auth.userId && (
+            <button
+              className="icon-btn icon-btn-on"
+              onClick={() => setShowLogin(true)}
+              title="登录 / 注册"
+            >
+              <LogIn size={18} strokeWidth={1.7} />
             </button>
           )}
         </div>
@@ -623,6 +742,27 @@ export default function Page() {
             </button>
           </div>
         </div>
+      )}
+
+      {showLogin && (
+        <LoginModal auth={auth} onClose={() => setShowLogin(false)} />
+      )}
+      {showHistory && (
+        <HistoryDrawer
+          history={history}
+          currentId={convId}
+          email={auth.email}
+          onOpen={openConversation}
+          onNew={newChat}
+          onDelete={removeConversation}
+          onSignOut={async () => {
+            await auth.signOut();
+            setHistory([]);
+            setConvId(null);
+            setShowHistory(false);
+          }}
+          onClose={() => setShowHistory(false)}
+        />
       )}
 
       {empty ? (
@@ -739,6 +879,150 @@ export default function Page() {
             ? "点麦克风说，或打字都行 · 问道会把回答读给你听"
             : "问道会把回答读给你听 · 短而准，一句话点醒 · Enter 发送"}
         </p>
+      </div>
+    </div>
+  );
+}
+
+function LoginModal({
+  auth,
+  onClose,
+}: {
+  auth: ReturnType<typeof useAuth>;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState<"in" | "up">("in");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    if (!email.trim() || pw.length < 6) {
+      setErr("填邮箱 + 至少 6 位密码");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    const e =
+      mode === "in"
+        ? await auth.signIn(email, pw)
+        : await auth.signUp(email, pw);
+    setBusy(false);
+    if (e) setErr(e);
+    else onClose();
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-x" onClick={onClose} title="关闭">
+          <X size={18} strokeWidth={1.8} />
+        </button>
+        <div className="modal-title">
+          {mode === "in" ? "登录问道" : "注册问道"}
+        </div>
+        <div className="modal-sub">登录后，对话会存到云端、换设备也在</div>
+        <input
+          className="modal-input"
+          type="email"
+          inputMode="email"
+          placeholder="邮箱"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="modal-input"
+          type="password"
+          placeholder="密码（至少 6 位）"
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        {err && <div className="modal-err">{err}</div>}
+        <button className="modal-submit" onClick={submit} disabled={busy}>
+          {busy ? "稍等……" : mode === "in" ? "登录" : "注册并登录"}
+        </button>
+        <div className="modal-switch">
+          {mode === "in" ? (
+            <>
+              还没账号？
+              <button onClick={() => { setMode("up"); setErr(null); }}>去注册</button>
+            </>
+          ) : (
+            <>
+              已有账号？
+              <button onClick={() => { setMode("in"); setErr(null); }}>去登录</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HistoryDrawer({
+  history,
+  currentId,
+  email,
+  onOpen,
+  onNew,
+  onDelete,
+  onSignOut,
+  onClose,
+}: {
+  history: ConvMeta[];
+  currentId: string | null;
+  email: string | null;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+  onDelete: (id: string) => void;
+  onSignOut: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <div className="drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <span className="drawer-title">我的对话</span>
+          <button className="icon-btn" onClick={onClose} title="关闭">
+            <X size={18} strokeWidth={1.8} />
+          </button>
+        </div>
+        <button className="drawer-new" onClick={onNew}>
+          <Plus size={16} strokeWidth={2} />
+          新对话
+        </button>
+        <div className="drawer-list">
+          {history.length === 0 ? (
+            <div className="drawer-empty">还没有存下的对话</div>
+          ) : (
+            history.map((c) => (
+              <div
+                key={c.id}
+                className={"drawer-item" + (c.id === currentId ? " on" : "")}
+              >
+                <button className="drawer-item-open" onClick={() => onOpen(c.id)}>
+                  {c.title || "新对话"}
+                </button>
+                <button
+                  className="drawer-item-del"
+                  onClick={() => onDelete(c.id)}
+                  title="删除"
+                >
+                  <Trash2 size={15} strokeWidth={1.8} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="drawer-foot">
+          <span className="drawer-email">{email}</span>
+          <button className="drawer-signout" onClick={onSignOut}>
+            退出登录
+          </button>
+        </div>
       </div>
     </div>
   );
