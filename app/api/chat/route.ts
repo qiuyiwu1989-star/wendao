@@ -6,9 +6,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-// 打字/深度模式用 pro（要深度）；语音/通话模式(fast)用 v2.5——实测首句延迟砍半、
-// 解码 3.7x 快，短口语回答质量不掉。两者都可 env 覆盖。
-const MODEL = process.env.WENDAO_MODEL || "mimo-v2.5-pro";
+// 统一用 mimo-v2.5：实测首句延迟仅 pro 的一半、解码 3.7x 快，而教练式短回答
+// 质量不掉。若哪天想让打字/深度模式换回 pro，改 WENDAO_MODEL 即可。
+const MODEL = process.env.WENDAO_MODEL || "mimo-v2.5";
 const MODEL_FAST = process.env.WENDAO_MODEL_FAST || "mimo-v2.5";
 const MAX_TOKENS = Number(process.env.WENDAO_MAX_TOKENS || 1024);
 const LLM_BASE = process.env.LLM_BASE || "https://token-plan-cn.xiaomimimo.com";
