@@ -26,6 +26,7 @@ import {
   ArrowUp,
   BookOpen,
   Compass,
+  Info,
   LogIn,
   Mic,
   PanelLeft,
@@ -626,7 +627,10 @@ export default function Page() {
               <Phone size={18} strokeWidth={1.7} />
             </button>
           )}
-          <a className="icon-btn" href={`${BASE}/about`} title="关于问道 · 方法">
+          <a className="icon-btn" href={`${BASE}/intro`} title="问道是什么">
+            <Info size={18} strokeWidth={1.7} />
+          </a>
+          <a className="icon-btn" href={`${BASE}/about`} title="方法论详解">
             <BookOpen size={18} strokeWidth={1.7} />
           </a>
           <button

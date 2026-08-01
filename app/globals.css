@@ -1354,3 +1354,135 @@ textarea::placeholder {
   font-size: 12px;
 }
 .drawer-signout:hover { border-color: var(--danger); color: var(--danger); }
+
+/* ==================== 项目介绍页 ==================== */
+.intro-cta-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 26px;
+}
+
+.intro-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 15px;
+  padding: 12px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.intro-ghost:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.intro-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.intro-card {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.intro-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.intro-card-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 7px;
+  font-size: 15.5px;
+}
+
+.intro-card-body {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14.5px;
+  line-height: 1.75;
+}
+
+.intro-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 4px 0 20px;
+}
+
+.intro-stat {
+  text-align: center;
+  padding: 16px 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+}
+
+.intro-stat-n {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.intro-stat-l {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+
+.intro-repo {
+  margin-top: 16px;
+}
+.intro-repo a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-faint);
+  text-decoration: none;
+  font-size: 13px;
+}
+.intro-repo a:hover {
+  color: var(--accent);
+}
+
+.doc-p a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+}
+.doc-p b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .intro-grid {
+    grid-template-columns: 1fr;
+  }
+  .intro-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

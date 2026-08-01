@@ -60,7 +60,9 @@ export default function About() {
           <ArrowLeft size={16} strokeWidth={1.8} />
           <span>回到对话</span>
         </a>
-        <span className="doc-navbrand">问道 · 方法</span>
+        <a className="doc-navbrand" href={`${BASE}/intro`} style={{ textDecoration: "none" }}>
+          问道是什么 →
+        </a>
       </nav>
 
       <header className="doc-hero">
