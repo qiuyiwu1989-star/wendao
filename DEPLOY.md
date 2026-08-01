@@ -103,3 +103,18 @@ pm2 restart wendao      # 或 systemctl restart wendao
 - [ ] `/about` 关于·方法页能打开
 - [ ] `.env.local` 权限收紧（`chmod 600`），且不在 git 里
 - [ ] 发布窗口：用户在用时冻结重启
+
+## 坑：服务器 .env.local 会覆盖代码默认值
+
+改了代码里的默认模型（如 `WENDAO_MODEL` 从 pro 改 v2.5）后，**必须同时检查服务器
+`~/wendao/.env.local`**——那里若显式写了旧值，会盖掉代码默认，改动等于没生效。
+
+```bash
+ssh ubuntu@122.51.221.171 'grep -E "^WENDAO_MODEL" ~/wendao/.env.local'
+```
+
+## 坑：延迟要在服务器侧量，别从本地量
+
+本地 curl 打公网含跨境往返（常见 +3s），量不出真实体感。正确做法：
+`ssh ... 'curl localhost:3210/api/chat ...'`。国内真实首字基线 **0.6–1.0s**，
+偶发 3s+ 是 MiMo 网关波动，非应用问题。
