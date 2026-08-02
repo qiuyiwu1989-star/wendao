@@ -1486,3 +1486,38 @@ textarea::placeholder {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* 落地页：引流补充样式 */
+.intro-note {
+  max-width: 520px;
+  margin: 16px auto 0;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--text-faint);
+}
+.intro-note strong {
+  color: var(--text-dim);
+}
+
+.intro-sub-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  font-size: 13.5px;
+}
+.intro-sub-cta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.intro-sub-cta a:hover {
+  color: var(--accent);
+}
+.intro-dot {
+  color: var(--text-faint);
+}

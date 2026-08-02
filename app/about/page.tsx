@@ -56,11 +56,11 @@ export default function About() {
   return (
     <main className="doc">
       <nav className="doc-nav">
-        <a className="doc-back" href={`${BASE}/`}>
+        <a className="doc-back" href={`${BASE}/chat`}>
           <ArrowLeft size={16} strokeWidth={1.8} />
           <span>回到对话</span>
         </a>
-        <a className="doc-navbrand" href={`${BASE}/intro`} style={{ textDecoration: "none" }}>
+        <a className="doc-navbrand" href={`${BASE}/`} style={{ textDecoration: "none" }}>
           问道是什么 →
         </a>
       </nav>
@@ -246,7 +246,7 @@ export default function About() {
       </section>
 
       <div className="doc-cta">
-        <a className="doc-cta-btn" href={`${BASE}/`}>
+        <a className="doc-cta-btn" href={`${BASE}/chat`}>
           <MessageCircle size={18} strokeWidth={1.8} />
           开始一场对话
         </a>
