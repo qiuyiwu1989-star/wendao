@@ -57,6 +57,7 @@ const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const API_URL = `${BASE}/api/chat`;
 const TTS_URL = `${BASE}/api/tts`;
 const ASR_URL = `${BASE}/api/asr`;
+const FEED_URL = `${BASE}/api/feed`;
 
 const STARTERS = [
   "我该不该辞职去创业？",
@@ -104,6 +105,7 @@ export default function Page() {
   convIdRef.current = convId;
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = auth.token;
+  const feedBrainRef = useRef<(() => void) | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speechRef = useRef<SpeechQueue | null>(null);
   const captureRef = useRef<VoiceCapture | null>(null);
@@ -123,6 +125,15 @@ export default function Page() {
     } catch {
       /* ignore */
     }
+  }, []);
+
+  // 离开页面时也投喂一次（关标签/刷新都算一场对话结束）
+  useEffect(() => {
+    const onLeave = () => {
+      if (document.visibilityState === "hidden") feedBrainRef.current?.();
+    };
+    document.addEventListener("visibilitychange", onLeave);
+    return () => document.removeEventListener("visibilitychange", onLeave);
   }, []);
 
   // 卸载时释放所有在途资源（未来若改 SPA 路由不至于泄漏 AudioContext/麦克风/请求）
@@ -287,16 +298,35 @@ export default function Page() {
     []
   );
 
+  // 向上喂：一场对话收尾时投喂回深脑（后台跑，不打扰用户；同一场只喂一次）
+  const fedRef = useRef<string | null>(null);
+  const feedBrain = useCallback((msgs: Msg[]) => {
+    if (msgs.length < 4) return; // 太短没沉淀价值
+    const sig = String(msgs.length) + (msgs[0]?.content || "").slice(0, 20);
+    if (fedRef.current === sig) return;
+    fedRef.current = sig;
+    fetch(FEED_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: msgs }),
+      keepalive: true, // 允许在页面关闭时继续发出
+    }).catch(() => {});
+  }, []);
+
+  feedBrainRef.current = () => feedBrain(messages);
+
   const newChat = useCallback(() => {
+    feedBrain(messages);
     setMessages([]);
     setConvId(null);
     setShowHistory(false);
+    fedRef.current = null;
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [messages, feedBrain]);
 
   const removeConversation = useCallback(
     async (id: string) => {
@@ -565,7 +595,8 @@ export default function Page() {
     stopAudio();
     if (streaming) abortRef.current?.abort();
     setInput("");
-  }, [stopAudio, streaming]);
+    feedBrain(messages); // 挂断=一场对话收尾，投喂回深脑
+  }, [stopAudio, streaming, messages, feedBrain]);
 
   // 通话中点一下：打断当前（跳过问道正在说/在想的），立刻回到听
   const interruptCall = useCallback(() => {

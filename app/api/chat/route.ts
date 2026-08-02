@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt } from "@/lib/persona";
 import { limitOr429 } from "@/lib/ratelimit";
+import { recallBackground, groundingBlock } from "@/lib/deepbrain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,7 +86,14 @@ export async function POST(req: Request) {
 
   const client = new Anthropic({ apiKey, baseURL: `${LLM_BASE}/anthropic` });
   // 语音模式用精简提示词抢延迟；打字/深度模式用完整版
-  const system = buildSystemPrompt(fast);
+  let system = buildSystemPrompt(fast);
+
+  // 向下取：拿用户这句话去深脑捞相关判断，让问道问得"懂你"。
+  // 只在第一轮之后的每一轮都试（成本低、超时紧），失败静默降级。
+  // 语音模式超时更紧——宁可不 grounding 也不能拖慢开口。
+  const lastUser = messages[messages.length - 1].content;
+  const background = await recallBackground(lastUser, fast ? 1800 : 3500);
+  if (background) system += groundingBlock(background);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
