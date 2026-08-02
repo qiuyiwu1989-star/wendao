@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt } from "@/lib/persona";
 import { limitOr429 } from "@/lib/ratelimit";
-import { recallBackground, groundingBlock } from "@/lib/deepbrain";
+import { recallBackground, groundingBlock, canUseDeepbrain } from "@/lib/deepbrain";
+import { getUser } from "@/lib/authServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,11 +90,17 @@ export async function POST(req: Request) {
   let system = buildSystemPrompt(fast);
 
   // 向下取：拿用户这句话去深脑捞相关判断，让问道问得"懂你"。
-  // 只在第一轮之后的每一轮都试（成本低、超时紧），失败静默降级。
-  // 语音模式超时更紧——宁可不 grounding 也不能拖慢开口。
-  const lastUser = messages[messages.length - 1].content;
-  const background = await recallBackground(lastUser, fast ? 1800 : 3500);
-  if (background) system += groundingBlock(background);
+  //
+  // 安全：服务端只有一把深脑 key（= key 主人自己的大脑），所以**必须**先确认
+  // 调用者是已登录的白名单本人，否则任何访客都能读到别人的私有判断。
+  // 非白名单用户走纯教练路径（不读深脑），体验照常。
+  const caller = await getUser(req);
+  if (canUseDeepbrain(caller?.email)) {
+    const lastUser = messages[messages.length - 1].content;
+    // 语音模式超时更紧——宁可不 grounding 也不能拖慢开口
+    const background = await recallBackground(lastUser, fast ? 1800 : 3500);
+    if (background) system += groundingBlock(background);
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

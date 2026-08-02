@@ -305,9 +305,14 @@ export default function Page() {
     const sig = String(msgs.length) + (msgs[0]?.content || "").slice(0, 20);
     if (fedRef.current === sig) return;
     fedRef.current = sig;
+    const t = tokenRef.current;
+    if (!t) return; // 未登录不投喂（服务端也会拒，这里省一次请求）
     fetch(FEED_URL, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${t}`,
+      },
       body: JSON.stringify({ messages: msgs }),
       keepalive: true, // 允许在页面关闭时继续发出
     }).catch(() => {});
@@ -374,7 +379,13 @@ export default function Page() {
       try {
         const res = await fetch(API_URL, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            // 带上登录态：服务端据此判断能否用深脑 grounding（白名单本人才给）
+            ...(tokenRef.current
+              ? { authorization: `Bearer ${tokenRef.current}` }
+              : {}),
+          },
           // fast=ttsOn：要听语音就走无思考抢延迟；纯打字保留思考
           body: JSON.stringify({ messages: next, fast: ttsOn }),
           signal: controller.signal,

@@ -12,7 +12,9 @@ export function bearer(req: Request): string | null {
   return h && h.startsWith("Bearer ") ? h.slice(7).trim() : null;
 }
 
-export async function getUserId(req: Request): Promise<string | null> {
+export async function getUser(
+  req: Request
+): Promise<{ id: string; email: string | null } | null> {
   const token = bearer(req);
   if (!token || !url || !anon) return null;
   try {
@@ -21,8 +23,12 @@ export async function getUserId(req: Request): Promise<string | null> {
     });
     const { data, error } = await sb.auth.getUser(token);
     if (error || !data.user) return null;
-    return data.user.id;
+    return { id: data.user.id, email: data.user.email ?? null };
   } catch {
     return null;
   }
+}
+
+export async function getUserId(req: Request): Promise<string | null> {
+  return (await getUser(req))?.id ?? null;
 }

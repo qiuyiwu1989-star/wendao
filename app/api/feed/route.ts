@@ -1,5 +1,6 @@
-import { feedConversation, deepbrainEnabled } from "@/lib/deepbrain";
+import { feedConversation, canUseDeepbrain } from "@/lib/deepbrain";
 import { limitOr429 } from "@/lib/ratelimit";
+import { getUser } from "@/lib/authServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +11,13 @@ export const maxDuration = 30;
 export async function POST(req: Request) {
   const limited = limitOr429(req, "feed", 20);
   if (limited) return limited;
-  if (!deepbrainEnabled)
-    return new Response(JSON.stringify({ ok: false, reason: "未接深脑" }), {
+
+  // 安全：投喂是**写进 key 主人的记忆库**，必须是已登录的白名单本人。
+  // 否则任何陌生人的对话都会污染别人的第二大脑。
+  const caller = await getUser(req);
+  if (!canUseDeepbrain(caller?.email))
+    return new Response(JSON.stringify({ ok: false, reason: "无权限" }), {
+      status: 403,
       headers: { "content-type": "application/json" },
     });
 

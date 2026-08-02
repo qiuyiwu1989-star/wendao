@@ -11,6 +11,28 @@ const MCP_KEY = process.env.DEEPBRAIN_MCP_KEY;
 
 export const deepbrainEnabled = !!(MCP_URL && MCP_KEY);
 
+/**
+ * 谁能用深脑能力。
+ *
+ * **安全前提**：服务端只有一把深脑 key，它代表的是「key 主人自己的第二大脑」。
+ * 因此深脑能力**绝不能对所有访客开放**——否则任何人都能读到 key 主人的私有判断，
+ * 而且陌生人的对话会被投喂进 key 主人的记忆库。
+ *
+ * 规则：必须是**已登录**、且邮箱在 DEEPBRAIN_OWNER_EMAILS 白名单里的人。
+ * 白名单为空 = 深脑能力对所有人关闭（安全默认）。
+ */
+const OWNERS = (process.env.DEEPBRAIN_OWNER_EMAILS || "")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+export function canUseDeepbrain(email: string | null | undefined): boolean {
+  if (!deepbrainEnabled) return false;
+  if (!email) return false; // 未登录一律不给
+  if (OWNERS.length === 0) return false; // 没配白名单=默认关，绝不放开
+  return OWNERS.includes(email.trim().toLowerCase());
+}
+
 // 检索结果缓存：深脑一次检索 3-4s，同一话题反复问不该反复付这个钱。
 // 语音模式常因超时拿不到结果，但后台请求会把结果填进缓存，下一轮就能直接命中。
 const cache = new Map<string, { at: number; val: string | null }>();
