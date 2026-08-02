@@ -103,6 +103,34 @@ Chrome 的 Web Speech API（`webkitSpeechRecognition`）**走谷歌服务器，�
 
 ---
 
+## 三点五、接过用户在问道攒下的沉淀（冷启动弹药）
+
+问道独立站的定位是**深脑的上游**：陌生人先在那儿聊，聊出的判断沉淀下来，再引导进深脑。
+所以新用户进深脑时**未必是空的**——他可能已经在问道攒了一堆判断。接过来，深脑的冷启动体验会好很多。
+
+**数据在哪**：造物中台共享 PG（`zhongtai_app`）的 `public.wendao_summaries`
+
+```sql
+select title, judgments, takeaway, created_at
+from public.wendao_summaries
+where user_id = $1              -- 深脑 Supabase 的 user id，两边同一套账号，直接对得上
+order by created_at desc;
+```
+
+`judgments` 是 jsonb 数组，每条 `{type, text, basis}`：
+- `type`：`想清楚了` / `还在赌` / `待解`
+- `text`：一句话判断（第二人称）
+- `basis`：用户原话里的依据片段
+
+**这个结构是特意对齐判断库的**——可以直接当判断原子入库，`basis` 就是天然依据，
+出处标成"来自问道对话"即可。不需要二次提炼。
+
+> **为什么不是让问道用 MCP 往深脑写**：问道服务端只有一把 key，用它写等于把所有用户的
+> 东西写进 key 主人的大脑（我犯过这个错，见坑 6）。改成"问道存自己的表 + 深脑按 user_id 读"，
+> 既无缝又没有越权风险。
+
+---
+
 ## 四、提示词里的几条硬约束（别改坏）
 
 问道的"人格"全靠这些，集成时容易被无意破坏：
