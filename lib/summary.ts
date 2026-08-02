@@ -66,3 +66,36 @@ export function deleteSummary(id: string) {
     /* ignore */
   }
 }
+
+// ---------- 云端同步（登录后把本地攒的小结带上去） ----------
+const SUMMARIES_URL = `${BASE}/api/summaries`;
+
+/** 把本地小结批量同步到云端（幂等，服务端按 local_id 去重）。返回新入库条数 */
+export async function syncSummaries(
+  token: string,
+  items: StoredSummary[]
+): Promise<number> {
+  if (!items.length) return 0;
+  try {
+    const res = await fetch(SUMMARIES_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        items: items.map((s) => ({
+          title: s.title,
+          judgments: s.judgments,
+          takeaway: s.takeaway,
+          local_id: s.id,
+        })),
+      }),
+    });
+    if (!res.ok) return 0;
+    const j = (await res.json()) as { synced?: number };
+    return j.synced || 0;
+  } catch {
+    return 0;
+  }
+}

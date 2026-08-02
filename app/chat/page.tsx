@@ -20,6 +20,7 @@ import {
   saveSummary,
   loadSummaries,
   deleteSummary,
+  syncSummaries,
   type Summary,
   type StoredSummary,
 } from "@/lib/summary";
@@ -339,6 +340,18 @@ export default function Page() {
   useEffect(() => {
     setSummaries(loadSummaries());
   }, []);
+
+  // 登录后把本地攒下的小结同步上云——这就是"沉淀跟着人走"。
+  // 存在问道自己的表里（按 user_id 隔离），深脑用同一账号即可接过去。
+  const [syncedCount, setSyncedCount] = useState(0);
+  useEffect(() => {
+    if (!auth.token) return;
+    const local = loadSummaries();
+    if (!local.length) return;
+    syncSummaries(auth.token, local).then((n) => {
+      if (n > 0) setSyncedCount(n);
+    });
+  }, [auth.token]);
 
   // 提炼这场对话的小结
   const summarize = useCallback(async () => {
@@ -848,11 +861,21 @@ export default function Page() {
       )}
 
       {summary && (
-        <SummaryCard summary={summary} onClose={() => setSummary(null)} />
+        <SummaryCard
+          summary={summary}
+          signedIn={!!auth.userId}
+          onClose={() => setSummary(null)}
+        />
       )}
       {showSummaries && (
         <SummaryList
           items={summaries}
+          signedIn={!!auth.userId}
+          syncedCount={syncedCount}
+          onSignIn={() => {
+            setShowSummaries(false);
+            setShowLogin(true);
+          }}
           onDelete={(id) => {
             deleteSummary(id);
             setSummaries(loadSummaries());
@@ -1146,9 +1169,11 @@ function HistoryDrawer({
 
 function SummaryCard({
   summary,
+  signedIn,
   onClose,
 }: {
   summary: Summary;
+  signedIn: boolean;
   onClose: () => void;
 }) {
   return (
@@ -1171,7 +1196,11 @@ function SummaryCard({
         {summary.takeaway && (
           <div className="sum-takeaway">{summary.takeaway}</div>
         )}
-        <div className="sum-foot">已存下 · 登录深脑后可汇入你的第二大脑</div>
+        <div className="sum-foot">
+          {signedIn
+            ? "已存下 · 已同步到云端，深脑里能接着用"
+            : "已存下 · 登录后自动跟着你走，进深脑时就在那儿"}
+        </div>
       </div>
     </div>
   );
@@ -1179,10 +1208,16 @@ function SummaryCard({
 
 function SummaryList({
   items,
+  signedIn,
+  syncedCount,
+  onSignIn,
   onDelete,
   onClose,
 }: {
   items: StoredSummary[];
+  signedIn: boolean;
+  syncedCount: number;
+  onSignIn: () => void;
   onDelete: (id: string) => void;
   onClose: () => void;
 }) {
@@ -1195,7 +1230,10 @@ function SummaryList({
             <X size={18} strokeWidth={1.8} />
           </button>
         </div>
-        <div className="sum-count">已经想清楚 {items.length} 件事</div>
+        <div className="sum-count">
+          已经想清楚 {items.length} 件事
+          {signedIn && syncedCount > 0 && ` · 已同步 ${syncedCount} 条上云`}
+        </div>
         <div className="drawer-list">
           {items.map((s) => (
             <div className="sum-row" key={s.id}>
@@ -1215,10 +1253,26 @@ function SummaryList({
             </div>
           ))}
         </div>
-        <div className="drawer-foot">
-          <a className="sum-cta" href="https://shennao.zaowuyun.com">
-            汇入深脑，让它认识你 →
-          </a>
+        <div className="drawer-foot sum-drawer-foot">
+          {signedIn ? (
+            <>
+              <div className="sum-hint">
+                这些判断已经跟着你的账号存下了。进深脑，让它们和你的其他积累连起来。
+              </div>
+              <a className="sum-cta" href="https://shennao.zaowuyun.com">
+                去深脑看全貌 →
+              </a>
+            </>
+          ) : (
+            <>
+              <div className="sum-hint">
+                现在只存在这台设备上。登录后会跟着你走——换设备、进深脑都还在。
+              </div>
+              <button className="sum-cta" onClick={onSignIn}>
+                登录，把它们存下来
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
