@@ -16,6 +16,14 @@ import {
 } from "@/lib/recorder";
 import { useAuth } from "@/lib/useAuth";
 import {
+  extractSummary,
+  saveSummary,
+  loadSummaries,
+  deleteSummary,
+  type Summary,
+  type StoredSummary,
+} from "@/lib/summary";
+import {
   listConversations,
   loadConversation,
   saveConversation,
@@ -27,8 +35,10 @@ import {
   BookOpen,
   Compass,
   Info,
+  Lightbulb,
   LogIn,
   Mic,
+  NotebookPen,
   PanelLeft,
   Phone,
   PhoneOff,
@@ -93,6 +103,11 @@ export default function Page() {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [callMode, setCallMode] = useState(false);
+  // 思考小结
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaries, setSummaries] = useState<StoredSummary[]>([]);
+  const [showSummaries, setShowSummaries] = useState(false);
   const [voice, setVoice] = useState("苏打");
   const [showVoices, setShowVoices] = useState(false);
   // 账号 + 云端历史
@@ -319,6 +334,29 @@ export default function Page() {
   }, []);
 
   feedBrainRef.current = () => feedBrain(messages);
+
+  // 载入已存的小结（累积感的来源）
+  useEffect(() => {
+    setSummaries(loadSummaries());
+  }, []);
+
+  // 提炼这场对话的小结
+  const summarize = useCallback(async () => {
+    if (summarizing) return;
+    const turns = messages.filter((m) => m.role === "user").length;
+    if (turns < 2) return;
+    setSummarizing(true);
+    const s = await extractSummary(messages);
+    setSummarizing(false);
+    if (s) {
+      setSummary(s);
+      saveSummary(s);
+      setSummaries(loadSummaries());
+    }
+  }, [messages, summarizing]);
+
+  const canSummarize =
+    messages.filter((m) => m.role === "user").length >= 2 && !streaming;
 
   const newChat = useCallback(() => {
     feedBrain(messages);
@@ -660,6 +698,25 @@ export default function Page() {
           </div>
         </div>
         <div className="topbar-actions">
+          {canSummarize && (
+            <button
+              className="icon-btn"
+              onClick={summarize}
+              disabled={summarizing}
+              title="小结这次思考"
+            >
+              <NotebookPen size={18} strokeWidth={1.7} />
+            </button>
+          )}
+          {summaries.length > 0 && (
+            <button
+              className="icon-btn"
+              onClick={() => setShowSummaries(true)}
+              title={`我想清楚的事（${summaries.length}）`}
+            >
+              <Lightbulb size={18} strokeWidth={1.7} />
+            </button>
+          )}
           {micSupported && (
             <button
               className="icon-btn"
@@ -790,6 +847,19 @@ export default function Page() {
         </div>
       )}
 
+      {summary && (
+        <SummaryCard summary={summary} onClose={() => setSummary(null)} />
+      )}
+      {showSummaries && (
+        <SummaryList
+          items={summaries}
+          onDelete={(id) => {
+            deleteSummary(id);
+            setSummaries(loadSummaries());
+          }}
+          onClose={() => setShowSummaries(false)}
+        />
+      )}
       {showLogin && (
         <LoginModal auth={auth} onClose={() => setShowLogin(false)} />
       )}
@@ -1068,6 +1138,87 @@ function HistoryDrawer({
           <button className="drawer-signout" onClick={onSignOut}>
             退出登录
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({
+  summary,
+  onClose,
+}: {
+  summary: Summary;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal sum-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-x" onClick={onClose} title="关闭">
+          <X size={18} strokeWidth={1.8} />
+        </button>
+        <div className="sum-eyebrow">这次你想清楚的</div>
+        <div className="sum-title">{summary.title}</div>
+        <div className="sum-list">
+          {summary.judgments.map((j, i) => (
+            <div className="sum-item" key={i}>
+              <span className={`sum-tag sum-tag-${j.type}`}>{j.type}</span>
+              <div className="sum-text">{j.text}</div>
+              {j.basis && <div className="sum-basis">“{j.basis}”</div>}
+            </div>
+          ))}
+        </div>
+        {summary.takeaway && (
+          <div className="sum-takeaway">{summary.takeaway}</div>
+        )}
+        <div className="sum-foot">已存下 · 登录深脑后可汇入你的第二大脑</div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryList({
+  items,
+  onDelete,
+  onClose,
+}: {
+  items: StoredSummary[];
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <div className="drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <span className="drawer-title">我想清楚的事</span>
+          <button className="icon-btn" onClick={onClose} title="关闭">
+            <X size={18} strokeWidth={1.8} />
+          </button>
+        </div>
+        <div className="sum-count">已经想清楚 {items.length} 件事</div>
+        <div className="drawer-list">
+          {items.map((s) => (
+            <div className="sum-row" key={s.id}>
+              <div className="sum-row-main">
+                <div className="sum-row-title">{s.title}</div>
+                {s.takeaway && (
+                  <div className="sum-row-take">{s.takeaway}</div>
+                )}
+              </div>
+              <button
+                className="drawer-item-del"
+                onClick={() => onDelete(s.id)}
+                title="删除"
+              >
+                <Trash2 size={15} strokeWidth={1.8} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="drawer-foot">
+          <a className="sum-cta" href="https://shennao.zaowuyun.com">
+            汇入深脑，让它认识你 →
+          </a>
         </div>
       </div>
     </div>
