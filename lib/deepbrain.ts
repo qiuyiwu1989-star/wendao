@@ -149,7 +149,8 @@ export async function feedConversation(
   const body = messages
     .map((m) => `${m.role === "user" ? "用户" : "问道"}：${m.content}`)
     .join("\n\n");
-  if (body.length < 120) return false; // 太短没有沉淀价值
+  // 深脑要求正文 ≥100 字；这里留出余量，太短的对话本也没沉淀价值
+  if (body.length < 160) return false;
   const first = messages.find((m) => m.role === "user")?.content || "";
   const t = (title || `问道对话 · ${first.slice(0, 20)}`).slice(0, 60);
   const r = await callTool(
