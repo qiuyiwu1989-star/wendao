@@ -11,6 +11,26 @@ const MCP_KEY = process.env.DEEPBRAIN_MCP_KEY;
 
 export const deepbrainEnabled = !!(MCP_URL && MCP_KEY);
 
+// 检索结果缓存：深脑一次检索 3-4s，同一话题反复问不该反复付这个钱。
+// 语音模式常因超时拿不到结果，但后台请求会把结果填进缓存，下一轮就能直接命中。
+const cache = new Map<string, { at: number; val: string | null }>();
+const CACHE_TTL = 10 * 60_000;
+
+function cacheGet(k: string): string | null | undefined {
+  const hit = cache.get(k);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at > CACHE_TTL) {
+    cache.delete(k);
+    return undefined;
+  }
+  return hit.val;
+}
+
+function cacheSet(k: string, val: string | null) {
+  if (cache.size > 200) cache.clear();
+  cache.set(k, { at: Date.now(), val });
+}
+
 type McpResult = { content?: { type: string; text?: string }[] };
 
 async function callTool(
@@ -65,8 +85,29 @@ export async function recallBackground(
 ): Promise<string | null> {
   const q = query.trim().slice(0, 200);
   if (!q || q.length < 4) return null;
-  const raw = await callTool("search_brain", { query: q }, timeoutMs);
-  if (!raw) return null;
+
+  const key = q.toLowerCase();
+  const cached = cacheGet(key);
+  if (cached !== undefined) return cached; // 命中（含"查过但没结果"）
+
+  // 后台请求：即使本轮等不及，也让它把结果填进缓存，下一轮直接命中
+  const pending = callTool("search_brain", { query: q }, 12_000).then((r) => {
+    const c = r ? clean(r) : null;
+    cacheSet(key, c);
+    return c;
+  });
+
+  // 硬超时竞速：到点立刻放行继续对话，**不等**在途请求
+  // （只靠 AbortController 不够——深脑检索要 3-4s，会把开口拖到十几秒）
+  const raw = await Promise.race([
+    pending,
+    new Promise<null>((r) => setTimeout(() => r(null), timeoutMs)),
+  ]);
+  return raw;
+}
+
+/** 清洗检索结果：去溯源 id、限条数与长度 */
+function clean(raw: string): string | null {
   // 去掉溯源 id（<analysis:...>）——那是给机器的，塞进提示词只会干扰模型
   const cleaned = raw
     .replace(/<analysis:[^>]*>/g, "")
