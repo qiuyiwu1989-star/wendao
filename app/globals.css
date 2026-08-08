@@ -1673,3 +1673,39 @@ button.sum-cta { border: none; font-family: inherit; }
 @media (max-width: 600px) {
   .wave { left: 56px; right: 56px; }
 }
+
+/* 波形加强：更高更亮、带发光，动效更明显 */
+.wave { height: 30px; gap: 3px; }
+.wave-bar {
+  min-width: 3px;
+  max-width: 5px;
+  box-shadow: 0 0 6px var(--accent-soft);
+  transition: height 70ms cubic-bezier(.2,.8,.3,1), opacity 160ms ease;
+}
+@keyframes wave-idle {
+  0%, 100% { transform: scaleY(0.55); }
+  50% { transform: scaleY(1.1); }
+}
+.wave-hint {
+  position: absolute;
+  right: 0;
+  top: -20px;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* 对讲机：按住时的状态 */
+.mic-btn-hold {
+  color: #12141a;
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.08);
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+.mic-btn-cancel {
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 6px rgba(217,138,123,0.18) !important;
+}
+.mic-btn { touch-action: none; user-select: none; }

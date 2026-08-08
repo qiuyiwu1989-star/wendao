@@ -30,6 +30,11 @@ export async function startVoiceCapture(opts: {
   silenceMs?: number; // 语音后静音多久算说完
   maxMs?: number; // 单段最长
   noSpeechMs?: number; // 一直没说话多久放弃
+  /**
+   * 对讲机模式（按住说话）：**不靠静音自动收尾**，只在调用 stop() 时结束。
+   * 适合嘈杂环境或想说长句——VAD 会在句中停顿处误判"说完了"，按住说没这问题。
+   */
+  pushToTalk?: boolean;
 }): Promise<VoiceCapture> {
   const silenceMs = opts.silenceMs ?? 650;
   const maxMs = opts.maxMs ?? 20000;
@@ -158,7 +163,7 @@ export async function startVoiceCapture(opts: {
 
     // 给界面画波形：把 RMS 压到 0-1，低音量也能看出起伏
     if (opts.onLevel) {
-      const norm = Math.min(1, Math.sqrt(rms) * 3.2);
+      const norm = Math.min(1, Math.sqrt(rms) * 4.6);
       opts.onLevel(norm);
     }
 
@@ -175,6 +180,12 @@ export async function startVoiceCapture(opts: {
       lastVoice = now;
     }
 
+    // 对讲机模式：静音不收尾，全听用户松手（只保留最长时长兜底）
+    if (opts.pushToTalk) {
+      if (now - t0 > maxMs) finalize(speechStarted);
+      return;
+    }
+
     if (speechStarted && now - lastVoice > silenceMs) {
       finalize(true);
     } else if (!speechStarted && now - t0 > noSpeechMs) {
@@ -185,7 +196,7 @@ export async function startVoiceCapture(opts: {
   };
 
   return {
-    stop: () => finalize(speechStarted || chunks.length > 6),
+    stop: () => finalize(opts.pushToTalk ? chunks.length > 3 : speechStarted || chunks.length > 6),
     cancel: () => {
       if (done) return;
       done = true;

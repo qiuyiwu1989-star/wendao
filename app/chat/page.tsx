@@ -99,6 +99,11 @@ export default function Page() {
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [level, setLevel] = useState(0); // 录音实时音量 0-1，驱动波形动效
+  const [holding, setHolding] = useState(false); // 对讲机模式：按住说话中
+  const [willCancel, setWillCancel] = useState(false); // 上滑取消
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdStartY = useRef(0);
+  const cancelRef = useRef(false);
   const [micSupported, setMicSupported] = useState(false);
   const [micDenied, setMicDenied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -556,7 +561,7 @@ export default function Page() {
     captureRef.current?.stop();
   }, []);
 
-  const listen = useCallback(async () => {
+  const listen = useCallback(async (pushToTalk = false) => {
     // capturingRef 是同步门闩：挡住重入（双击/relisten 撞车）导致重复开麦、MediaStream 泄漏
     if (streaming || capturingRef.current) return;
     capturingRef.current = true;
@@ -577,9 +582,15 @@ export default function Page() {
     };
     try {
       const cap = await startVoiceCapture({
+        pushToTalk,
+        onLevel: setLevel,
         onResult: async (wav) => {
           finishCapture();
           if (stale()) return;
+          if (cancelRef.current) {
+            cancelRef.current = false;
+            return; // 上滑取消：录了也不发
+          }
           setTranscribing(true);
           const text = await transcribe(wav);
           setTranscribing(false);
@@ -619,7 +630,7 @@ export default function Page() {
   }, [streaming, stopAudio, transcribe, send]);
 
   useEffect(() => {
-    relistenRef.current = listen;
+    relistenRef.current = () => listen(false); // 通话回听始终走免手模式
   }, [listen]);
 
   // 进通话前预热 MiMo prompt cache：偷偷发一个 fast 请求跑完系统提示词 prefill，
@@ -646,6 +657,54 @@ export default function Page() {
     if (listening) stopCapture();
     else listen();
   }, [listening, listen, stopCapture]);
+
+  // 麦克风按钮双模：
+  //   短按 → 免手模式（VAD，说完自动发）
+  //   长按 → 对讲机（按住说、松开发，上滑取消）—— 嘈杂环境或说长句时更可控
+  const HOLD_MS = 260;
+  const CANCEL_DIST = 60;
+
+  const onMicDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (streaming || transcribing) return;
+      holdStartY.current = e.clientY;
+      cancelRef.current = false;
+      setWillCancel(false);
+      holdTimer.current = setTimeout(() => {
+        holdTimer.current = null;
+        if (listening) stopCapture(); // 已在免手录音就先收掉
+        setHolding(true);
+        listen(true); // 对讲机模式
+      }, HOLD_MS);
+    },
+    [streaming, transcribing, listening, listen, stopCapture]
+  );
+
+  const onMicMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!holding) return;
+      const up = holdStartY.current - e.clientY;
+      const c = up > CANCEL_DIST;
+      cancelRef.current = c;
+      setWillCancel(c);
+    },
+    [holding]
+  );
+
+  const onMicUp = useCallback(() => {
+    if (holdTimer.current) {
+      // 没到长按时长 → 当作短按，走免手模式
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+      toggleMic();
+      return;
+    }
+    if (holding) {
+      setHolding(false);
+      setWillCancel(false);
+      stopCapture(); // 松手即收尾；cancelRef 决定发不发
+    }
+  }, [holding, stopCapture, toggleMic]);
 
   const startCall = useCallback(() => {
     setMicDenied(false);
@@ -991,15 +1050,26 @@ export default function Page() {
         <div className={"composer-inner" + (listening ? " composer-listening" : "")}>
           {micSupported && (
             <button
-              className={"mic-btn" + (listening ? " mic-btn-on" : "")}
-              onClick={toggleMic}
+              className={
+                "mic-btn" +
+                (listening ? " mic-btn-on" : "") +
+                (holding ? " mic-btn-hold" : "") +
+                (willCancel ? " mic-btn-cancel" : "")
+              }
+              onPointerDown={onMicDown}
+              onPointerMove={onMicMove}
+              onPointerUp={onMicUp}
+              onPointerCancel={onMicUp}
+              onPointerLeave={() => holding && onMicUp()}
               disabled={streaming || transcribing}
-              title={listening ? "在听……点击结束" : "语音输入"}
+              title={holding ? "松开发送，上滑取消" : "点一下免手说；按住说完松开发送"}
             >
               <Mic size={18} strokeWidth={1.8} />
             </button>
           )}
-          {listening && <Waveform level={level} />}
+          {(listening || holding) && (
+            <Waveform level={level} hint={holding ? (willCancel ? "松开取消" : "松开发送 · 上滑取消") : ""} />
+          )}
           <textarea
             ref={taRef}
             value={input}
@@ -1007,7 +1077,7 @@ export default function Page() {
             placeholder={
               transcribing
                 ? "识别中……"
-                : listening
+                : listening || holding
                 ? ""
                 : "说说你正在纠结、想不通的那件事……"
             }
@@ -1195,14 +1265,24 @@ function HistoryDrawer({
  * 输入波形：用录音的**真实音量**驱动，不是假动画。
  * 每根柱子有自己的相位和权重，看起来像音频律动而不是整齐的呼吸。
  */
-function Waveform({ level, bars = 14 }: { level: number; bars?: number }) {
+function Waveform({
+  level,
+  bars = 20,
+  hint,
+}: {
+  level: number;
+  bars?: number;
+  hint?: string;
+}) {
   return (
     <div className="wave" aria-hidden>
+      {hint && <span className="wave-hint">{hint}</span>}
       {Array.from({ length: bars }).map((_, i) => {
         // 中间高两边低，配合音量得到自然的包络
         const center = 1 - Math.abs(i - (bars - 1) / 2) / ((bars - 1) / 2);
-        const weight = 0.35 + center * 0.65;
-        const h = 12 + level * 100 * weight;
+        const weight = 0.3 + center * 0.7;
+        // 增益调大 + 底噪抬高：小声也看得见起伏，大声更有冲击
+        const h = 18 + Math.min(1, level * 1.6) * 105 * weight;
         return (
           <span
             key={i}
