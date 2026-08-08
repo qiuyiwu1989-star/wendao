@@ -1,8 +1,14 @@
 // 深脑（DeepBrain）MCP 客户端 —— 问道的"向下取 / 向上喂"两端。
 //
-// 向下取 grounding：对话前用用户这句话去深脑检索相关判断，塞进提示词，
-//   于是问道问出的是"懂你的"问题，而不是在真空里空谈。
+// 向下取，两条路，**对质优先于相关**：
+//   1. findTension（对质）：问深脑"我过去有没有说过和这话相反的"。
+//   2. recallBackground（相关）：检索与当前话题相关的既有判断。
 // 向上喂：一场对话结束，把它投喂回深脑，成为可被分析沉淀的素材。
+//
+// 为什么对质排第一：深脑存的是用户**已经得出的结论**，光把相关的还给他，
+// 只会让他越问越自洽——一个带完整引文的回音室，检索做得越好回路越紧。
+// 相关=加固，矛盾=摩擦，而问道的价值在摩擦。所以两者都拿到时，
+// tension 块必须拼在 grounding 块**之前**（更靠近模型注意力，先被读到）。
 //
 // 未配置 DEEPBRAIN_MCP_URL/KEY 时全部静默降级（返回空/不投喂），不影响主流程。
 
@@ -157,6 +163,92 @@ ${background}
 - 让它帮你问出"懂他"的问题——比如发现他以前有过相关判断、或跟现在的说法有出入，可以点出来。
 - **不要复述它、不要显摆你知道**，更不要说"根据你的记录/深脑显示"。像一个认识他很久的人那样自然地用。
 - 如果跟当前话题没关系，直接忽略。`;
+}
+
+/**
+ * 对质：拿用户这句话去问深脑「我过去有没有说过与此相反的判断」。
+ *
+ * 和 recallBackground 的区别不在实现、在**问法**：search_brain 找的是相关，
+ * ask_brain 能做跨篇比对（它官方举的例子就是"我们在定价上有没有自相矛盾"）。
+ * 拿不到 / 超时 / 深脑说没有 → 一律 null，对质是加分项，绝不拖垮对话。
+ */
+export async function findTension(
+  userSaid: string,
+  timeoutMs = 2500
+): Promise<string | null> {
+  const q = userSaid.trim().slice(0, 200);
+  if (!q || q.length < 4) return null;
+
+  // 另起 key 前缀：同一句话的"找相关"和"找矛盾"是两个答案，别互相覆盖
+  const key = `tension:${q.toLowerCase()}`;
+  const cached = cacheGet(key);
+  if (cached !== undefined) return cached; // 命中（含"问过但没矛盾"）
+
+  const question =
+    `我刚才说："${q}"。` +
+    `关于这件事，我过去有没有说过与此不一致、或者相反的判断？` +
+    `如果有，把我的原话和当时的语境说出来，并指出不一致在哪；` +
+    `如果没有，就只回答"没有"，不要为了凑答案硬找。`;
+
+  // ask_brain 要做跨篇推理，比 search_brain 更慢，后台超时放宽到 20s：
+  // 本轮多半等不到，但结果会落进缓存，用户接着往下说的那轮就能直接命中
+  const pending = callTool("ask_brain", { question }, 20_000).then((r) => {
+    const c = r ? cleanTension(r) : null;
+    cacheSet(key, c);
+    return c;
+  });
+
+  // 同 recallBackground：硬超时竞速，到点立刻放行，不等在途请求
+  return await Promise.race([
+    pending,
+    new Promise<null>((r) => setTimeout(() => r(null), timeoutMs)),
+  ]);
+}
+
+/**
+ * 清洗对质结果，并把"没有矛盾"识别成 null。
+ *
+ * 宁可漏判也不能错判：识别错了会让问道拿着一句"没有找到"去质问用户。
+ * 所以只在**短且以否定开头**时判为没有——长答案里的"没有"多半是原话的一部分。
+ */
+function cleanTension(raw: string): string | null {
+  const cleaned = raw
+    .replace(/<analysis:[^>]*>/g, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join("\n");
+  if (cleaned.length < 20) return null;
+
+  const head = cleaned.slice(0, 40);
+  if (/^(没有|无|未发现|找不到|不存在|没找到|暂无)/.test(head)) return null;
+  // 短答案 + 明确否定 = 深脑在说"查过了，不矛盾"
+  if (cleaned.length < 120 && /(没有|未发现|找不到|不存在|不矛盾|一致的)/.test(cleaned))
+    return null;
+
+  return cleaned.slice(0, 1400);
+}
+
+/**
+ * 把对质结果包装成系统提示词片段。
+ * 注意拼装顺序：这一块要放在 groundingBlock **之前**（见文件头）。
+ */
+export function tensionBlock(text: string): string {
+  return `
+
+---
+
+# 他过去说过的、可能和现在不一致的话（来自深脑）
+
+${text}
+
+用法（重要）：
+- 这不是背景资料，是**摩擦**。把两个版本摆到一起，让他自己看见：
+  "你三个月前说这个团队最大的问题是人不对，今天你说是机制——中间发生了什么，还是换了个更舒服的解释？"
+- 摆出来就行，不替他下结论。他改口可能有充分理由，也可能只是找了个更好受的说法，让他自己说。
+- **绝不要说"系统显示""根据记录""深脑里查到"**。像个记性好的朋友，随口就能想起他当时怎么说的。
+- 如果读下来其实并不矛盾，直接忽略这一块，**别硬造对立**——硬造出来的对质比不对质更伤信任。
+- 语音场景下要短：一句话点出出入，再问一句，不要长篇罗列。`;
 }
 
 /**

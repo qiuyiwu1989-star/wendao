@@ -1,9 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt } from "@/lib/persona";
 import { limitOr429 } from "@/lib/ratelimit";
-import { recallBackground, groundingBlock, canUseDeepbrain } from "@/lib/deepbrain";
+import {
+  recallBackground,
+  groundingBlock,
+  findTension,
+  tensionBlock,
+  canUseDeepbrain,
+} from "@/lib/deepbrain";
 import { getUser } from "@/lib/authServer";
 import { fetchDueBets, debtBlock } from "@/lib/bets";
+import { fetchProfile, profileBlock } from "@/lib/profile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,15 +106,30 @@ export async function POST(req: Request) {
 
   // 催账（COUNTERPARTY.md 职能②）：只在**开场那一轮**查一次到期的账，
   // 之后每轮都查是浪费——账已经在上下文里了。取不到就跳过，不拖慢对话。
+  // 催账 + 画像都只在**开场那一轮**查：查一次就已经在上下文里，每轮查是白花时间。
+  // 并发拿，互不等待。任一失败都静默跳过，不拖垮对话。
   if (caller?.id && messages.length <= 2) {
-    const due = await fetchDueBets(caller.id, 3);
+    const [due, profile] = await Promise.all([
+      fetchDueBets(caller.id, 3),
+      fetchProfile(caller.id),
+    ]);
     if (due.length) system += debtBlock(due);
+    // 画像给的是"他怎么想事情 + 哪个维度还没探过"，属于长期底色，
+    // 排在催账之后、对质之前
+    if (profile) system += profileBlock(profile);
   }
 
   if (canUseDeepbrain(caller?.email)) {
     const lastUser = messages[messages.length - 1].content;
-    // 语音模式超时更紧——宁可不 grounding 也不能拖慢开口
-    const background = await recallBackground(lastUser, fast ? 1800 : 3500);
+    // 并发取两路，语音模式超时更紧——宁可不取也不能拖慢开口。
+    // ask_brain 要跨篇推理更慢，首轮多半超时拿 null，靠缓存在下一轮生效。
+    const [tension, background] = await Promise.all([
+      findTension(lastUser, fast ? 1800 : 4500),
+      recallBackground(lastUser, fast ? 1800 : 3500),
+    ]);
+    // 顺序是硬要求：对质拼在相关之前。相关只会加固他的回路，
+    // 矛盾才是摩擦——越靠前越靠近模型注意力。见 COUNTERPARTY.md。
+    if (tension) system += tensionBlock(tension);
     if (background) system += groundingBlock(background);
   }
 

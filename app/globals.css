@@ -1739,3 +1739,35 @@ button.sum-cta { border: none; font-family: inherit; }
 }
 .bet-acts button:hover { color: var(--accent); border-color: var(--accent); }
 .bet-acts .bet-drop:hover { color: var(--text-faint); border-color: var(--border); }
+
+/* 被推翻的判断数（COUNTERPARTY.md 第四节：问道成功的唯一标准）。
+   刻意做成小结抽屉里视觉最重的一块——这个指标一旦不显眼，
+   就会被"聊了多少次""想清楚了几件事"这些好看的数字盖过去。 */
+.broken-metric {
+  padding: 14px 14px 13px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-soft);
+}
+.broken-metric-line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+/* 数字本体：抽屉里字号最大、唯一用 accent 的数 */
+.broken-metric-n {
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.broken-metric-note {
+  margin-top: 9px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}

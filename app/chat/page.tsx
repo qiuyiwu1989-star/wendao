@@ -24,9 +24,11 @@ import {
   recordBets,
   listBets,
   settleBet,
+  EMPTY_BET_STATS,
   type Summary,
   type StoredSummary,
   type Bet,
+  type BetStats,
 } from "@/lib/summary";
 import {
   listConversations,
@@ -121,6 +123,8 @@ export default function Page() {
   const [summaries, setSummaries] = useState<StoredSummary[]>([]);
   const [showSummaries, setShowSummaries] = useState(false);
   const [bets, setBets] = useState<Bet[]>([]); // 挂着的账（还在赌的假设）
+  // 各状态计数；其中 broken = 被推翻的判断数，是问道唯一在乎的成功指标
+  const [betStats, setBetStats] = useState<BetStats>(EMPTY_BET_STATS);
   const [voice, setVoice] = useState("苏打");
   const [showVoices, setShowVoices] = useState(false);
   // 账号 + 云端历史
@@ -292,7 +296,9 @@ export default function Page() {
   const refreshBets = useCallback(async () => {
     const t = tokenRef.current;
     if (!t) return;
-    setBets(await listBets(t));
+    const { bets, stats } = await listBets(t);
+    setBets(bets);
+    setBetStats(stats);
   }, []);
 
   const refreshHistory = useCallback(async () => {
@@ -969,6 +975,7 @@ export default function Page() {
         <SummaryList
           items={summaries}
           bets={bets}
+          betStats={betStats}
           onSettle={async (id, st) => {
             const t = tokenRef.current;
             if (!t) return;
@@ -1373,6 +1380,7 @@ function SummaryCard({
 function SummaryList({
   items,
   bets,
+  betStats,
   onSettle,
   signedIn,
   syncedCount,
@@ -1382,6 +1390,7 @@ function SummaryList({
 }: {
   items: StoredSummary[];
   bets: Bet[];
+  betStats: BetStats;
   onSettle: (id: string, status: "held" | "broken" | "dropped") => void;
   signedIn: boolean;
   syncedCount: number;
@@ -1403,6 +1412,24 @@ function SummaryList({
           {signedIn && syncedCount > 0 && ` · 已同步 ${syncedCount} 条上云`}
         </div>
         <div className="drawer-list">
+          {/*
+            COUNTERPARTY.md 第四节：问道成功的唯一标准，是用户有没有因为它改掉过一个判断。
+            所以这个数字必须是抽屉里最大的那个——比"想清楚了几件事"更大。
+            N=0 时照样显示，且不粉饰：0 是一句真话，藏起来才是在讨好自己。
+            未登录时账本在云端读不到，显示 0 会是假的，所以整块不渲染。
+          */}
+          {signedIn && (
+            <div className="broken-metric">
+              <div className="broken-metric-line">
+                推翻过 <span className="broken-metric-n">{betStats.broken}</span> 个判断
+              </div>
+              <div className="broken-metric-note">
+                {betStats.broken === 0
+                  ? "这是问道唯一在乎的指标，现在它是 0——说明到目前为止，问道只在帮你加固想法，没在帮你思考。"
+                  : "这是问道唯一在乎的指标：不是聊了多少次，是你因为它改掉过几个判断。它要是长期不动，说明问道只在帮你加固想法。"}
+              </div>
+            </div>
+          )}
           {bets.length > 0 && (
             <div className="bets">
               <div className="bets-head">

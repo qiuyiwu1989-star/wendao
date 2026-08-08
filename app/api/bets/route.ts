@@ -16,8 +16,12 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// GET            → 挂着的账（按到期日升序，最该问的在前）
+// GET            → 挂着的账（按到期日升序，最该问的在前）+ 各状态计数
 // GET ?due=1     → 只要已到期的
+//
+// stats 里最重要的是 broken（验了不成立）：
+// COUNTERPARTY.md 第四节说，问道成功的唯一标准是"用户有没有因为它改掉过一个判断"。
+// broken 就是那个数。它必须能被看见，否则唯一标准会被"体验顺不顺"这类指标带偏。
 export async function GET(req: Request) {
   const limited = limitOr429(req, "bets", 120);
   if (limited) return limited;
@@ -38,7 +42,20 @@ export async function GET(req: Request) {
         limit 50`,
       [uid]
     );
-    return json({ bets: r.rows });
+    // 计数走独立的 group by：列表被 status='open' 和 limit 50 框住了，数不出全量。
+    // 同样强制 user_id 作用域——统计也是用户数据，不许跨用户看。
+    const s = await pool.query<{ status: string; n: string }>(
+      `select status, count(*)::text as n
+         from public.wendao_bets
+        where user_id = $1
+        group by status`,
+      [uid]
+    );
+    const stats = { open: 0, held: 0, broken: 0, dropped: 0 };
+    for (const row of s.rows) {
+      if (row.status in stats) stats[row.status as keyof typeof stats] = Number(row.n) || 0;
+    }
+    return json({ bets: r.rows, stats });
   } catch (e) {
     console.error("[bets GET]", e);
     return json({ error: "读取失败" }, 500);

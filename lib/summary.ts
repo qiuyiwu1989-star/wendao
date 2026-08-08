@@ -146,13 +146,29 @@ export async function recordBets(
   }
 }
 
-export async function listBets(token: string): Promise<Bet[]> {
+/** 各状态的账目计数。broken = 被推翻的判断数，是问道唯一在乎的指标 */
+export type BetStats = { open: number; held: number; broken: number; dropped: number };
+
+export const EMPTY_BET_STATS: BetStats = { open: 0, held: 0, broken: 0, dropped: 0 };
+
+/**
+ * 拉账本：既要挂着的账，也要各状态计数。
+ * 计数一并返回而不是另开一个接口——它和列表是同一次请求里的同一份事实，
+ * 分两次拉会出现"列表更新了、数字还是旧的"这种自相矛盾的界面。
+ */
+export async function listBets(
+  token: string
+): Promise<{ bets: Bet[]; stats: BetStats }> {
   try {
     const res = await fetch(BETS_URL, { headers: { authorization: `Bearer ${token}` } });
-    if (!res.ok) return [];
-    return ((await res.json()) as { bets?: Bet[] }).bets || [];
+    if (!res.ok) return { bets: [], stats: { ...EMPTY_BET_STATS } };
+    const j = (await res.json()) as { bets?: Bet[]; stats?: Partial<BetStats> };
+    return {
+      bets: j.bets || [],
+      stats: { ...EMPTY_BET_STATS, ...(j.stats || {}) },
+    };
   } catch {
-    return [];
+    return { bets: [], stats: { ...EMPTY_BET_STATS } };
   }
 }
 
@@ -171,5 +187,55 @@ export async function settleBet(
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+// ---------- 思维画像（COUNTERPARTY.md 职能③ 照出盲区）----------
+const PROFILE_URL = `${BASE}/api/profile`;
+
+export type Profile = {
+  dimensions: {
+    strong: { dim: string; claim: string; evidence: string }[];
+    weak: { dim: string; claim: string; hint: string }[];
+    probed: string[];
+    /** 从没探过的维度——盲区本体 */
+    unprobed: string[];
+    next: { dim: string; how: string }[];
+  };
+  sessionsCount: number;
+  updatedAt: string;
+};
+
+/**
+ * 一场对话结束时，把这场的新证据并进画像（跨会话累积，服务端做增量合并）。
+ * 带上小结的判断能显著提高质量——判断比逐字稿密度高。
+ */
+export async function updateProfileFromSession(
+  token: string,
+  messages: { role: "user" | "assistant"; content: string }[],
+  judgments?: Judgment[]
+): Promise<Profile | null> {
+  try {
+    const res = await fetch(PROFILE_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ messages, judgments: judgments || [] }),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { ok?: boolean; profile?: Profile };
+    return j.ok && j.profile ? j.profile : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 我的画像；还没攒出来返回 null */
+export async function getProfile(token: string): Promise<Profile | null> {
+  try {
+    const res = await fetch(PROFILE_URL, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+    return ((await res.json()) as { profile?: Profile | null }).profile || null;
+  } catch {
+    return null;
   }
 }
