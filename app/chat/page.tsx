@@ -200,6 +200,10 @@ export default function Page() {
 
   // 新建一个句级语音队列（自动播放 + 手动重听共用）
   const newQueue = useCallback((index: number): SpeechQueue => {
+    // 必须先停掉上一个队列：每个队列有自己的 AudioContext 和时间游标，
+    // 两个同时活着会各排各的 → 声音重叠（用户在问道说话时又发一条就会触发）
+    speechRef.current?.stop();
+    speechRef.current = null;
     const q = createSpeechQueue({
       url: TTS_URL,
       voice,

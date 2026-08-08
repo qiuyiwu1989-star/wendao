@@ -118,6 +118,9 @@ export function useVoiceCall(opts: VoiceCallOptions): VoiceCall {
           if (!text) return relisten();
 
           setLastHeard(text);
+          // 建新队列前必须停掉旧的：每个队列有独立的 AudioContext 和时间游标，
+          // 两个同时活着会各排各的时间轴 → 声音重叠
+          stopSpeaking();
           // 交给调用方的 LLM；它用 say/doneSaying 把结果推回来
           const q = createSpeechQueue({
             url: optsRef.current.ttsUrl,
