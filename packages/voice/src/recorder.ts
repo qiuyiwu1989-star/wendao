@@ -23,6 +23,8 @@ export function recorderSupported(): boolean {
 
 export async function startVoiceCapture(opts: {
   onResult: (wav: Blob) => void;
+  /** 实时音量回调（0-1），用于画输入波形。每帧一次，约每 85ms */
+  onLevel?: (level: number) => void;
   onNoSpeech?: () => void;
   onError?: (e: unknown) => void;
   silenceMs?: number; // 语音后静音多久算说完
@@ -153,6 +155,12 @@ export async function startVoiceCapture(opts: {
     let sum = 0;
     for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
     const rms = Math.sqrt(sum / input.length);
+
+    // 给界面画波形：把 RMS 压到 0-1，低音量也能看出起伏
+    if (opts.onLevel) {
+      const norm = Math.min(1, Math.sqrt(rms) * 3.2);
+      opts.onLevel(norm);
+    }
 
     // 头几帧估噪声底
     if (calibFrames < 4) {

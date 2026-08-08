@@ -98,6 +98,7 @@ export default function Page() {
   const [speaking, setSpeaking] = useState<number | null>(null);
   const [listening, setListening] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [level, setLevel] = useState(0); // 录音实时音量 0-1，驱动波形动效
   const [micSupported, setMicSupported] = useState(false);
   const [micDenied, setMicDenied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -568,6 +569,7 @@ export default function Page() {
     const finishCapture = () => {
       capturingRef.current = false;
       captureRef.current = null;
+      setLevel(0);
       setListening(false);
     };
     // 挂断竞态：这轮采集若在通话结束后才出结果，丢弃
@@ -844,6 +846,11 @@ export default function Page() {
             >
               <Compass size={44} strokeWidth={1.2} />
             </button>
+            {callPhase === "listening" && (
+              <div className="call-wave">
+                <Waveform level={level} bars={18} />
+              </div>
+            )}
             <div className="call-state">
               {callPhase === "listening"
                 ? "在听你说……"
@@ -1000,14 +1007,16 @@ export default function Page() {
               <Mic size={18} strokeWidth={1.8} />
             </button>
           )}
+          {listening && <Waveform level={level} />}
           <textarea
             ref={taRef}
             value={input}
+            className={listening ? "ta-listening" : ""}
             placeholder={
               transcribing
                 ? "识别中……"
                 : listening
-                ? "在听……说完自动发送"
+                ? ""
                 : "说说你正在纠结、想不通的那件事……"
             }
             rows={1}
@@ -1187,6 +1196,34 @@ function HistoryDrawer({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 输入波形：用录音的**真实音量**驱动，不是假动画。
+ * 每根柱子有自己的相位和权重，看起来像音频律动而不是整齐的呼吸。
+ */
+function Waveform({ level, bars = 14 }: { level: number; bars?: number }) {
+  return (
+    <div className="wave" aria-hidden>
+      {Array.from({ length: bars }).map((_, i) => {
+        // 中间高两边低，配合音量得到自然的包络
+        const center = 1 - Math.abs(i - (bars - 1) / 2) / ((bars - 1) / 2);
+        const weight = 0.35 + center * 0.65;
+        const h = 12 + level * 100 * weight;
+        return (
+          <span
+            key={i}
+            className="wave-bar"
+            style={{
+              height: `${Math.min(100, h)}%`,
+              animationDelay: `${(i % 5) * 90}ms`,
+              opacity: 0.55 + center * 0.45,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

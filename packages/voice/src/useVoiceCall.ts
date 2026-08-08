@@ -36,12 +36,14 @@ export type VoiceCallOptions = {
   onUserSaid: (text: string, api: { say: (s: string) => void; doneSaying: () => void }) => void;
   /** 麦克风权限被拒 */
   onMicDenied?: () => void;
-  /** 说完静音多久算说完，默认 900ms */
+  /** 说完静音多久算说完，默认 650ms */
   silenceMs?: number;
 };
 
 export type VoiceCall = {
   phase: CallPhase;
+  /** 录音时的实时音量 0-1，用来画波形 */
+  level: number;
   active: boolean;
   /** 最近一次识别出的用户原话（可用于界面回显，确认有没有听错） */
   lastHeard: string;
@@ -60,6 +62,7 @@ export function useVoiceCall(opts: VoiceCallOptions): VoiceCall {
   const [phase, setPhase] = useState<CallPhase>("idle");
   const [active, setActive] = useState(false);
   const [lastHeard, setLastHeard] = useState("");
+  const [level, setLevel] = useState(0);
   const [supported, setSupported] = useState(false);
 
   const captureRef = useRef<VoiceCapture | null>(null);
@@ -90,6 +93,7 @@ export function useVoiceCall(opts: VoiceCallOptions): VoiceCall {
     const done = () => {
       capturingRef.current = false;
       captureRef.current = null;
+      setLevel(0);
     };
     const relisten = () => {
       if (activeRef.current)
@@ -99,6 +103,7 @@ export function useVoiceCall(opts: VoiceCallOptions): VoiceCall {
     try {
       const cap = await startVoiceCapture({
         silenceMs: optsRef.current.silenceMs ?? 650,
+        onLevel: setLevel,
         onResult: async (wav) => {
           done();
           if (stale()) return;
@@ -203,5 +208,5 @@ export function useVoiceCall(opts: VoiceCallOptions): VoiceCall {
     []
   );
 
-  return { phase, active, lastHeard, supported, start, end, interrupt };
+  return { phase, active, level, lastHeard, supported, start, end, interrupt };
 }

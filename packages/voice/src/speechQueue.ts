@@ -21,6 +21,44 @@ export function speechSupported(): boolean {
   );
 }
 
+/**
+ * 合成结果缓存：同一段文字用同一音色重听时，不再请求 TTS。
+ * 存的是解码后的 Float32 PCM（可直接建 AudioBuffer）。
+ * 只留最近 12 条、每条 ≤ 60 秒音频，避免内存无限涨。
+ */
+type CachedAudio = { pcm: Float32Array<ArrayBuffer>; rate: number };
+const audioCache = new Map<string, CachedAudio>();
+const CACHE_MAX = 12;
+const CACHE_MAX_SAMPLES = 24000 * 60;
+
+function cacheKey(text: string, voice?: string) {
+  return `${voice || ""}\u0000${text}`;
+}
+
+function cacheGet(k: string): CachedAudio | undefined {
+  const hit = audioCache.get(k);
+  if (hit) {
+    audioCache.delete(k); // LRU：命中即刷新
+    audioCache.set(k, hit);
+  }
+  return hit;
+}
+
+function cachePut(k: string, v: CachedAudio) {
+  if (v.pcm.length > CACHE_MAX_SAMPLES) return; // 太长不缓存
+  audioCache.set(k, v);
+  while (audioCache.size > CACHE_MAX) {
+    const oldest = audioCache.keys().next().value;
+    if (oldest === undefined) break;
+    audioCache.delete(oldest);
+  }
+}
+
+/** 清空合成缓存（换音色等场景可主动调用；正常不需要） */
+export function clearSpeechCache() {
+  audioCache.clear();
+}
+
 export function createSpeechQueue(opts: {
   url: string;
   voice?: string;
@@ -59,8 +97,51 @@ export function createSpeechQueue(opts: {
     }, waitMs);
   }
 
+  /** 把一段 PCM 排进播放时间轴（缓存命中和流式收流共用） */
+  function schedule(f32: Float32Array<ArrayBuffer>, rate: number) {
+    const c = ctx;
+    if (!c || stopped || f32.length === 0) return;
+    const buf = c.createBuffer(1, f32.length, rate);
+    buf.copyToChannel(f32, 0);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(c.destination);
+    const at = Math.max(nextTime, c.currentTime + 0.02);
+    src.start(at);
+    nextTime = at + buf.duration;
+    sources.push(src);
+  }
+
+  /** 起播前的通用准备：建 ctx、对齐时间游标、触发 onStart */
+  async function ensureStarted(): Promise<AudioContext | null> {
+    if (!ctx) ctx = new Ctor();
+    const c = ctx;
+    try {
+      await c.resume();
+    } catch {
+      /* 某些浏览器无需 resume */
+    }
+    if (stopped) return null;
+    if (!started) {
+      started = true;
+      nextTime = c.currentTime + 0.12;
+      opts.onStart?.();
+    }
+    return c;
+  }
+
   async function synth(text: string) {
     if (stopped) return;
+
+    // 缓存命中：重听同一段不再花钱合成
+    const key = cacheKey(text, opts.voice);
+    const hit = cacheGet(key);
+    if (hit) {
+      if (!(await ensureStarted())) return;
+      schedule(hit.pcm, hit.rate);
+      return;
+    }
+
     const ac = new AbortController();
     controllers.push(ac);
 
@@ -78,21 +159,12 @@ export function createSpeechQueue(opts: {
     if (stopped || !res.ok || !res.body) return;
 
     const rate = Number(res.headers.get("x-sample-rate")) || 24000;
-    if (!ctx) ctx = new Ctor();
-    const c = ctx;
-    try {
-      await c.resume();
-    } catch {
-      /* 某些浏览器无需 resume */
-    }
-    if (!started) {
-      started = true;
-      nextTime = c.currentTime + 0.12;
-      opts.onStart?.();
-    }
+    if (!(await ensureStarted())) return;
 
     const reader = res.body.getReader();
     let leftover: Uint8Array | null = null;
+    const collected: Float32Array<ArrayBuffer>[] = []; // 收全了存进缓存，供重听复用
+    let complete = false;
     for (;;) {
       let chunk: ReadableStreamReadResult<Uint8Array>;
       try {
@@ -104,7 +176,10 @@ export function createSpeechQueue(opts: {
         reader.cancel().catch(() => {});
         break;
       }
-      if (chunk.done) break;
+      if (chunk.done) {
+        complete = true;
+        break;
+      }
       let bytes = chunk.value;
       if (!bytes || bytes.length === 0) continue;
       if (leftover) {
@@ -123,15 +198,21 @@ export function createSpeechQueue(opts: {
       const f32 = new Float32Array(int16.length);
       for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
 
-      const buf = c.createBuffer(1, f32.length, rate);
-      buf.copyToChannel(f32, 0);
-      const src = c.createBufferSource();
-      src.buffer = buf;
-      src.connect(c.destination);
-      const at = Math.max(nextTime, c.currentTime + 0.02);
-      src.start(at);
-      nextTime = at + buf.duration;
-      sources.push(src);
+      collected.push(f32);
+      schedule(f32, rate);
+    }
+
+    // 完整收到才入缓存（中途被打断的是残段，缓存了会放出半句）
+    if (complete && !stopped && collected.length) {
+      let n = 0;
+      for (const c of collected) n += c.length;
+      const all = new Float32Array(n);
+      let o = 0;
+      for (const c of collected) {
+        all.set(c, o);
+        o += c.length;
+      }
+      cachePut(key, { pcm: all, rate });
     }
   }
 

@@ -1623,3 +1623,53 @@ textarea::placeholder {
   color: var(--text-faint);
 }
 button.sum-cta { border: none; font-family: inherit; }
+
+/* ==================== 语音输入波形 ==================== */
+.wave {
+  position: absolute;
+  left: 62px;
+  right: 60px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.wave-bar {
+  flex: 1;
+  min-width: 2px;
+  max-width: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  /* 高度由真实音量驱动；过渡让它顺滑而不是跳变 */
+  transition: height 90ms ease-out, opacity 200ms ease;
+  animation: wave-idle 1.5s ease-in-out infinite;
+}
+
+/* 没声音时的轻微待机起伏，避免完全僵住 */
+@keyframes wave-idle {
+  0%, 100% { transform: scaleY(0.7); }
+  50% { transform: scaleY(1); }
+}
+
+.composer-inner { position: relative; }
+.ta-listening::placeholder { color: transparent; }
+
+.call-wave {
+  height: 34px;
+  width: 200px;
+  margin: 14px auto 0;
+  position: relative;
+}
+.call-wave .wave {
+  position: static;
+  height: 100%;
+  gap: 4px;
+}
+.call-wave .wave-bar { max-width: 5px; }
+
+@media (max-width: 600px) {
+  .wave { left: 56px; right: 56px; }
+}
