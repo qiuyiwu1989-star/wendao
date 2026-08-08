@@ -8,12 +8,12 @@ import {
   speechSupported,
   takeSentences,
   type SpeechQueue,
-} from "@/lib/speechQueue";
+} from "@/packages/voice/src/speechQueue";
 import {
   startVoiceCapture,
   recorderSupported,
   type VoiceCapture,
-} from "@/lib/recorder";
+} from "@/packages/voice/src/recorder";
 import { useAuth } from "@/lib/useAuth";
 import {
   extractSummary,
