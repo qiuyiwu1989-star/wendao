@@ -123,9 +123,6 @@ export default function Page() {
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = auth.token;
   const feedBrainRef = useRef<(() => void) | null>(null);
-  // 本轮输入是不是"说"出来的。打字的人在读屏幕，念给他听是多余的合成开销；
-  // 说话的人手没碰键盘，必须念。按意图决定要不要自动朗读，比全局开关准也省钱。
-  const spokeRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speechRef = useRef<SpeechQueue | null>(null);
   const captureRef = useRef<VoiceCapture | null>(null);
@@ -460,9 +457,9 @@ export default function Page() {
         const assistantIndex = next.length;
 
         // 句级流式朗读：整句一出就推进队列，不等整段。
-        // autoSpeak：只有"说"进来的（语音输入/通话）才自动朗读——打字的人在读屏幕，
-        // 合成了也没人听，白烧 TTS。打字回复仍可点「朗读」按需合成。
-        const autoSpeak = ttsOn && (spokeRef.current || callActiveRef.current);
+        // 规则很简单，不猜用户意图：**喇叭开就念，喇叭关就不念**。
+        // 关着也想听某一条时，点那条下面的「朗读」按钮即可（不受开关限制）。
+        const autoSpeak = ttsOn;
         const pipeline = autoSpeak && speechSupported();
         const queue = pipeline ? newQueue(assistantIndex) : null;
         let spokenLen = 0;
@@ -588,7 +585,6 @@ export default function Page() {
           setTranscribing(false);
           if (stale()) return;
           if (text) {
-            spokeRef.current = true; // 这轮是说出来的 → 自动朗读
             setInput(text);
             send(text);
           } else relisten();
@@ -696,7 +692,6 @@ export default function Page() {
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      spokeRef.current = false; // 打字 → 不自动朗读
       send(input);
     }
   };
@@ -934,10 +929,7 @@ export default function Page() {
               <button
                 key={s}
                 className="starter"
-                onClick={() => {
-                  spokeRef.current = false;
-                  send(s);
-                }}
+                onClick={() => send(s)}
               >
                 {s}
               </button>
@@ -1034,8 +1026,7 @@ export default function Page() {
             <button
               className="send-btn"
               onClick={() => {
-                spokeRef.current = false; // 打字 → 不自动朗读
-                send(input);
+                          send(input);
               }}
               disabled={!input.trim()}
               title="发送"
@@ -1048,7 +1039,7 @@ export default function Page() {
           {micDenied
             ? "麦克风没授权——点地址栏左侧的锁/图标，允许麦克风后再试"
             : micSupported
-            ? "说话时问道会念给你听 · 打字时想听点「朗读」"
+            ? "点麦克风说，或打字都行 · 喇叭开着就会念给你听"
             : "问道会把回答读给你听 · 短而准，一句话点醒 · Enter 发送"}
         </p>
       </div>
