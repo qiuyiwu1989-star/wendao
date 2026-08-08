@@ -180,12 +180,29 @@ export function createSpeechQueue(opts: {
  */
 export function takeSentences(
   full: string,
-  from: number
+  from: number,
+  opts?: { firstChunkFast?: boolean }
 ): { segments: string[]; next: number } {
   const tail = full.slice(from);
-  const re = /[^。！？!?\n]*[。！？!?\n]+/g;
   const segments: string[] = [];
   let consumed = 0;
+
+  // 抢首声：**第一块**允许在逗号/顿号/分号处就切出去朗读。
+  // 语音是边生成边读的，等一整句才开口会白等 1-2 秒（实测首句 43 字时多等 2s）。
+  // 只对第一块这么做——后面的块已经在播放中，按整句切更自然。
+  if (opts?.firstChunkFast && from === 0) {
+    const m = /^[^。！？!?\n]*?[，、；,;]/.exec(tail);
+    if (m && m[0].trim().length >= 6) {
+      const seg = m[0].replace(/[，、；,;]\s*$/, "").trim();
+      if (seg) {
+        segments.push(seg);
+        consumed = m[0].length;
+      }
+    }
+  }
+
+  const re = /[^。！？!?\n]*[。！？!?\n]+/g;
+  re.lastIndex = consumed;
   let m: RegExpExecArray | null;
   while ((m = re.exec(tail))) {
     const seg = m[0].trim();

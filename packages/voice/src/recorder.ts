@@ -29,7 +29,7 @@ export async function startVoiceCapture(opts: {
   maxMs?: number; // 单段最长
   noSpeechMs?: number; // 一直没说话多久放弃
 }): Promise<VoiceCapture> {
-  const silenceMs = opts.silenceMs ?? 900;
+  const silenceMs = opts.silenceMs ?? 650;
   const maxMs = opts.maxMs ?? 20000;
   const noSpeechMs = opts.noSpeechMs ?? 9000;
 
@@ -81,15 +81,35 @@ export async function startVoiceCapture(opts: {
     ctx.close().catch(() => {});
   }
 
+  const TARGET_RATE = 16000; // ASR 的标准采样率，再高对识别无增益
+
+  /** 线性重采样到 16kHz —— 上传体积降到约 1/3，移动网络下省的时间很可观 */
+  function downsample(input: Float32Array, from: number, to: number): Float32Array {
+    if (from <= to) return input;
+    const ratio = from / to;
+    const out = new Float32Array(Math.floor(input.length / ratio));
+    for (let i = 0; i < out.length; i++) {
+      const pos = i * ratio;
+      const idx = Math.floor(pos);
+      const frac = pos - idx;
+      const a = input[idx] || 0;
+      const b = input[idx + 1] ?? a;
+      out[i] = a + (b - a) * frac; // 线性插值，够用且便宜
+    }
+    return out;
+  }
+
   function encodeWav(): Blob {
     let len = 0;
     for (const c of chunks) len += c.length;
-    const pcm = new Float32Array(len);
+    const raw = new Float32Array(len);
     let o = 0;
     for (const c of chunks) {
-      pcm.set(c, o);
+      raw.set(c, o);
       o += c.length;
     }
+    const pcm = downsample(raw, rate, TARGET_RATE);
+    const outRate = rate > TARGET_RATE ? TARGET_RATE : rate;
     const buf = new ArrayBuffer(44 + pcm.length * 2);
     const view = new DataView(buf);
     const w = (off: number, s: string) => {
@@ -102,8 +122,8 @@ export async function startVoiceCapture(opts: {
     view.setUint32(16, 16, true);
     view.setUint16(20, 1, true); // PCM
     view.setUint16(22, 1, true); // mono
-    view.setUint32(24, rate, true);
-    view.setUint32(28, rate * 2, true);
+    view.setUint32(24, outRate, true);
+    view.setUint32(28, outRate * 2, true);
     view.setUint16(32, 2, true);
     view.setUint16(34, 16, true);
     w(36, "data");

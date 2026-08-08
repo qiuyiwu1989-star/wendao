@@ -98,7 +98,7 @@ export function useVoiceCall(opts: VoiceCallOptions): VoiceCall {
 
     try {
       const cap = await startVoiceCapture({
-        silenceMs: optsRef.current.silenceMs ?? 900,
+        silenceMs: optsRef.current.silenceMs ?? 650,
         onResult: async (wav) => {
           done();
           if (stale()) return;

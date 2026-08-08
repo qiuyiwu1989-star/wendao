@@ -466,7 +466,9 @@ export default function Page() {
             return copy;
           });
           if (queue) {
-            const { segments, next: n } = takeSentences(acc, spokenLen);
+            const { segments, next: n } = takeSentences(acc, spokenLen, {
+              firstChunkFast: true,
+            });
             for (const s of segments) queue.push(s);
             spokenLen = n;
           }
