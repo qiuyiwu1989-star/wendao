@@ -101,6 +101,7 @@ export default function Page() {
   const [level, setLevel] = useState(0); // 录音实时音量 0-1，驱动波形动效
   const [holding, setHolding] = useState(false); // 对讲机模式：按住说话中
   const [willCancel, setWillCancel] = useState(false); // 上滑取消
+  const [audioBlocked, setAudioBlocked] = useState(false); // 被浏览器自动播放策略挡住
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdStartY = useRef(0);
   const cancelRef = useRef(false);
@@ -213,7 +214,11 @@ export default function Page() {
     const q = createSpeechQueue({
       url: TTS_URL,
       voice,
-      onStart: () => setSpeaking(index),
+      onBlocked: () => setAudioBlocked(true),
+      onStart: () => {
+        setAudioBlocked(false);
+        setSpeaking(index);
+      },
       onDrain: () => {
         setSpeaking((cur) => (cur === index ? null : cur));
         // 通话模式：问道说完，自动接着听用户
@@ -1106,7 +1111,9 @@ export default function Page() {
           )}
         </div>
         <p className="composer-hint">
-          {micDenied
+          {audioBlocked
+            ? "浏览器挡住了自动播放——点一下页面任意处即可开启声音"
+            : micDenied
             ? "麦克风没授权——点地址栏左侧的锁/图标，允许麦克风后再试"
             : micSupported
             ? "点麦克风说，或打字都行 · 喇叭开着就会念给你听"

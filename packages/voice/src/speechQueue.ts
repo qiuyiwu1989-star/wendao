@@ -64,6 +64,8 @@ export function createSpeechQueue(opts: {
   voice?: string;
   onStart?: () => void; // 第一声真正播出时
   onDrain?: () => void; // 全部播完（自然结束）时
+  /** 被浏览器自动播放策略挡住（AudioContext suspended）。上层可提示"点一下页面开启声音" */
+  onBlocked?: () => void;
 }): SpeechQueue {
   const Ctor =
     window.AudioContext ||
@@ -120,6 +122,19 @@ export function createSpeechQueue(opts: {
       await c.resume();
     } catch {
       /* 某些浏览器无需 resume */
+    }
+    // 浏览器自动播放策略：没有用户手势时 AudioContext 会停在 suspended，
+    // 这时把音频排进去是**静默失败**——听不到任何声音，也没有报错。
+    // 挂一次性手势监听自愈，并通知上层可以提示用户。
+    if (c.state === "suspended") {
+      opts.onBlocked?.();
+      const unlock = () => {
+        c.resume().catch(() => {});
+        window.removeEventListener("pointerdown", unlock);
+        window.removeEventListener("keydown", unlock);
+      };
+      window.addEventListener("pointerdown", unlock, { once: true });
+      window.addEventListener("keydown", unlock, { once: true });
     }
     if (stopped) return null;
     if (!started) {
