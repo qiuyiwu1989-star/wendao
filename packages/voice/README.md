@@ -1,4 +1,4 @@
-# @zaowuyun/voice · 语音交互能力模组
+# @qiuyiwu1989-star/voice · 语音交互能力模组
 
 给造物云生态里任何应用（深脑 / 略懂 / InnoLab / 问道…）加上**打电话一样的语音对话**。
 
@@ -21,13 +21,34 @@
 
 ---
 
+## 安装（GitHub Packages）
+
+包发布在 GitHub Packages，**装之前要先配 registry 和认证**（私有源必需，一次性）：
+
+```bash
+# 1) 在你的项目根目录建 .npmrc（把 <TOKEN> 换成有 read:packages 权限的 GitHub token）
+cat >> .npmrc <<'NPMRC'
+@qiuyiwu1989-star:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=<TOKEN>
+NPMRC
+
+# 2) 装
+npm i @qiuyiwu1989-star/voice
+```
+
+> `.npmrc` 里有 token，**务必加进 .gitignore**。CI 里用 `NODE_AUTH_TOKEN` 环境变量替代。
+
+Next.js 消费方无需额外配置（包已编译为 JS + 类型声明，`"use client"` 已保留）。
+
+---
+
 ## 快速接入
 
 ### 1. 服务端：两个代理路由（密钥不下发前端）
 
 ```ts
 // app/api/asr/route.ts
-import { transcribe } from "@zaowuyun/voice/server/mimo";
+import { transcribe } from "@qiuyiwu1989-star/voice/server/mimo";
 export async function POST(req: Request) {
   const wav = await req.arrayBuffer();
   if (wav.byteLength > 8_000_000) return new Response("too large", { status: 413 });
@@ -36,7 +57,7 @@ export async function POST(req: Request) {
 }
 
 // app/api/tts/route.ts
-import { synthesizeStream, stripForSpeech, SAMPLE_RATE } from "@zaowuyun/voice/server/mimo";
+import { synthesizeStream, stripForSpeech, SAMPLE_RATE } from "@qiuyiwu1989-star/voice/server/mimo";
 export async function POST(req: Request) {
   const { text, voice } = await req.json();
   const stream = await synthesizeStream(
@@ -53,6 +74,8 @@ export async function POST(req: Request) {
 ### 2. 前端：一个 hook
 
 ```tsx
+import { useVoiceCall, takeSentences } from "@qiuyiwu1989-star/voice";
+
 const call = useVoiceCall({
   asrUrl: "/api/asr",
   ttsUrl: "/api/tts",
