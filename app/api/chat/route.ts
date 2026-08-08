@@ -87,7 +87,7 @@ export async function POST(req: Request) {
 
   const client = new Anthropic({ apiKey, baseURL: `${LLM_BASE}/anthropic` });
   // 语音模式用精简提示词抢延迟；打字/深度模式用完整版
-  let system = buildSystemPrompt(fast);
+  let system = buildSystemPrompt(fast ? "voice" : "full");
 
   // 向下取：拿用户这句话去深脑捞相关判断，让问道问得"懂你"。
   //

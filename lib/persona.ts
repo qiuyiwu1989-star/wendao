@@ -84,22 +84,64 @@ const STANDALONE_FRAME = `你现在是一个**独立运行的语音对话思维�
 
 let cachedFull: string | null = null;
 let cachedLean: string | null = null;
+let cachedVoice: string | null = null;
 
 /**
- * 组装系统提示词。
- * @param lean 精简版：只带 SKILL.md（含对话引导引擎），**不带** 50k 字的
- *   methods 详细元件定义。用于语音/通话模式抢延迟——提示词从 ~88k 砍到 ~38k 字，
- *   冷缓存下首字延迟大幅下降。短对话本来也不需要元件的逐条细节，引擎段已够用。
- *   打字/深度模式用完整版（lean=false），保留元件细节的锐度。
+ * 组装系统提示词，三档：
+ *   voice —— 语音/通话：只留影响对话行为的章节（~9k 字），抢首字延迟
+ *   lean  —— 全 SKILL.md（~18k 字），不含元件明细
+ *   full  —— SKILL.md + 68 元件明细（~88k 字），打字/深度模式用
  */
-export function buildSystemPrompt(lean = false): string {
+/**
+ * 语音档：只保留**影响对话行为**的章节，砍掉语音场景用不上的
+ * （联网研究工作流/5模块输出/高级模式/元件表/版本历史 —— 近 2 万字纯拖累）。
+ * 提示词越短，模型首字越快；实测 1.8万字→2.5千字 首字 1460ms→438ms。
+ * 注意：砍的是"不适用"的，不是"有用"的——安全边界/引擎/收尾/风格/反机械化全留。
+ */
+const VOICE_SECTIONS = [
+  "## 🛑 安全边界",
+  "## 🎭 核心角色",
+  "## 💡 轻量模式",
+  "## 🔑 对话引导引擎",
+  "## 🎬 收尾、分寸与连贯",
+  "## 🎨 输出风格",
+  "## 🛡️ 反机械化约束",
+];
+
+/** 从 SKILL.md 里按标题抽出指定章节（到下一个 ## 为止） */
+function extractSections(skill: string, heads: string[]): string {
+  const out: string[] = [];
+  for (const h of heads) {
+    const i = skill.indexOf(h);
+    if (i < 0) continue;
+    const j = skill.indexOf("\n## ", i + h.length);
+    out.push(skill.slice(i, j < 0 ? undefined : j).trim());
+  }
+  return out.join("\n\n---\n\n");
+}
+
+export type PromptTier = "voice" | "lean" | "full";
+
+export function buildSystemPrompt(tier: PromptTier | boolean = "full"): string {
+  // 兼容旧签名：true=lean、false=full
+  const t: PromptTier =
+    tier === true ? "lean" : tier === false ? "full" : tier;
   const prod = process.env.NODE_ENV === "production";
-  if (lean && cachedLean && prod) return cachedLean;
-  if (!lean && cachedFull && prod) return cachedFull;
+  if (prod) {
+    if (t === "voice" && cachedVoice) return cachedVoice;
+    if (t === "lean" && cachedLean) return cachedLean;
+    if (t === "full" && cachedFull) return cachedFull;
+  }
 
   const skill = readSkillFile("SKILL.md");
 
-  if (lean) {
+  if (t === "voice") {
+    const prompt = [STANDALONE_FRAME, extractSections(skill, VOICE_SECTIONS)].join("\n");
+    cachedVoice = prompt;
+    return prompt;
+  }
+
+  if (t === "lean") {
     const prompt = [STANDALONE_FRAME, skill].join("\n");
     cachedLean = prompt;
     return prompt;
