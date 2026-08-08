@@ -3,6 +3,7 @@ import { buildSystemPrompt } from "@/lib/persona";
 import { limitOr429 } from "@/lib/ratelimit";
 import { recallBackground, groundingBlock, canUseDeepbrain } from "@/lib/deepbrain";
 import { getUser } from "@/lib/authServer";
+import { fetchDueBets, debtBlock } from "@/lib/bets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,6 +96,14 @@ export async function POST(req: Request) {
   // 调用者是已登录的白名单本人，否则任何访客都能读到别人的私有判断。
   // 非白名单用户走纯教练路径（不读深脑），体验照常。
   const caller = await getUser(req);
+
+  // 催账（COUNTERPARTY.md 职能②）：只在**开场那一轮**查一次到期的账，
+  // 之后每轮都查是浪费——账已经在上下文里了。取不到就跳过，不拖慢对话。
+  if (caller?.id && messages.length <= 2) {
+    const due = await fetchDueBets(caller.id, 3);
+    if (due.length) system += debtBlock(due);
+  }
+
   if (canUseDeepbrain(caller?.email)) {
     const lastUser = messages[messages.length - 1].content;
     // 语音模式超时更紧——宁可不 grounding 也不能拖慢开口

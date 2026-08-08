@@ -5,7 +5,13 @@ const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const SUMMARY_URL = `${BASE}/api/summary`;
 export const SUMMARY_STORE = "wendao.summaries.v1";
 
-export type Judgment = { type: string; text: string; basis?: string };
+export type Judgment = {
+  type: string;
+  text: string;
+  basis?: string;
+  /** 仅「还在赌」：多少天内该去验证 */
+  checkDays?: number;
+};
 export type Summary = {
   title: string;
   judgments: Judgment[];
@@ -97,5 +103,73 @@ export async function syncSummaries(
     return j.synced || 0;
   } catch {
     return 0;
+  }
+}
+
+// ---------- 账本（COUNTERPARTY.md 职能② 催账）----------
+const BETS_URL = `${BASE}/api/bets`;
+
+export type Bet = {
+  id: string;
+  claim: string;
+  basis: string;
+  from_title: string;
+  due_at: string;
+  overdue: boolean;
+};
+
+/** 小结里的「还在赌」自动记进账本（幂等，服务端按 local_id 去重） */
+export async function recordBets(
+  token: string,
+  summary: StoredSummary
+): Promise<number> {
+  const bets = summary.judgments.filter((j) => j.type === "还在赌");
+  if (!bets.length) return 0;
+  try {
+    const res = await fetch(BETS_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        items: bets.map((b, i) => ({
+          claim: b.text,
+          basis: b.basis || "",
+          checkDays: b.checkDays ?? 14,
+          fromTitle: summary.title,
+          local_id: `${summary.id}-${i}`,
+        })),
+      }),
+    });
+    if (!res.ok) return 0;
+    return ((await res.json()) as { added?: number }).added || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function listBets(token: string): Promise<Bet[]> {
+  try {
+    const res = await fetch(BETS_URL, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) return [];
+    return ((await res.json()) as { bets?: Bet[] }).bets || [];
+  } catch {
+    return [];
+  }
+}
+
+/** 结账：held=验了成立 / broken=验了不成立 / dropped=不验了 */
+export async function settleBet(
+  token: string,
+  id: string,
+  status: "held" | "broken" | "dropped"
+): Promise<boolean> {
+  try {
+    const res = await fetch(BETS_URL, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id, status }),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }

@@ -22,11 +22,23 @@ const EXTRACT_PROMPT = `你是「问道」的提炼器。刚刚结束了一场�
   ✅"你怕的不是创业失败，是要为这个选择负全责"
   ✅"你说团队推不动，但其实是你不肯把判断权交出去"
 - 用**第二人称**（你……），像一个认识他的人在复述他自己的话。
+- **禁止出现"用户"二字**——那是内部措辞，不是对他说话的方式。
 - 不用 Markdown、不用 emoji。
 
 # 判断的三种类型
-- \`想清楚了\`：他在这场对话里真正看明白的（最有价值）
-- \`还在赌\`：他的结论依赖着某个尚未验证的假设
+
+- \`想清楚了\`：他在这场对话里**真正看明白的**（最有价值）
+  **硬标准——满足其一才算，否则降级为「待解」：**
+  ① 认知发生转变（"我原以为A，其实是B"）
+  ② 他用自己的话下了判断（不是问道下的）
+  ③ 承认了之前不肯承认的
+  ④ 做了取舍（不是"我再想想"）
+  **检验方法：basis 必须是他自己说过的话。如果你只能引用问道说的话，
+  说明那是问道的观点、不是他想清楚的——记为「待解」。**
+
+- \`还在赌\`：他的结论**依赖某个尚未验证的假设**。这类必须给 \`checkDays\`：
+  多少天内该去验（一般 7-30 天；越关键越短）。
+
 - \`待解\`：明确浮现但还没解决的问题
 
 # 输出
@@ -34,7 +46,8 @@ const EXTRACT_PROMPT = `你是「问道」的提炼器。刚刚结束了一场�
 {
   "title": "6-14字的标题，概括这场想的是什么",
   "judgments": [
-    {"type":"想清楚了","text":"一句话判断","basis":"用户原话里的依据片段（十几个字即可）"}
+    {"type":"想清楚了","text":"一句话判断","basis":"**用户自己说过的**原话片段（十几个字即可）"},
+    {"type":"还在赌","text":"他赌的那个假设","basis":"用户原话","checkDays":14}
   ],
   "takeaway": "一句可以带走的话。必须锋利、具体，是这场对话最值得记住的一句。"
 }
@@ -111,7 +124,13 @@ export async function POST(req: Request) {
   }
 }
 
-export type Judgment = { type: string; text: string; basis?: string };
+export type Judgment = {
+  type: string;
+  text: string;
+  basis?: string;
+  /** 仅「还在赌」：多少天内该去验证 */
+  checkDays?: number;
+};
 export type Summary = {
   title: string;
   judgments: Judgment[];
@@ -131,14 +150,23 @@ function parseSummary(text: string): Summary | null {
       ? (o.judgments as Record<string, unknown>[])
           .filter((j) => j && typeof j.text === "string" && j.text.trim())
           .slice(0, 3)
-          .map((j) => ({
-            type: String(j.type || "想清楚了").slice(0, 8),
-            text: String(j.text).trim().slice(0, 200),
-            basis:
-              typeof j.basis === "string" && j.basis.trim()
-                ? j.basis.trim().slice(0, 120)
-                : undefined,
-          }))
+          .map((j) => {
+            const type = String(j.type || "想清楚了").slice(0, 8);
+            const days = Number(j.checkDays);
+            return {
+              type,
+              text: String(j.text).trim().slice(0, 200),
+              basis:
+                typeof j.basis === "string" && j.basis.trim()
+                  ? j.basis.trim().slice(0, 120)
+                  : undefined,
+              // 只有「还在赌」带期限；没给就默认两周，别让账无限期挂着
+              checkDays:
+                type === "还在赌"
+                  ? Math.min(90, Math.max(3, Number.isFinite(days) ? days : 14))
+                  : undefined,
+            };
+          })
       : [];
     const title = String(o.title || "一次思考").trim().slice(0, 30);
     const takeaway = String(o.takeaway || "").trim().slice(0, 200);

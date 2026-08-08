@@ -21,8 +21,12 @@ import {
   loadSummaries,
   deleteSummary,
   syncSummaries,
+  recordBets,
+  listBets,
+  settleBet,
   type Summary,
   type StoredSummary,
+  type Bet,
 } from "@/lib/summary";
 import {
   listConversations,
@@ -116,6 +120,7 @@ export default function Page() {
   const [summarizing, setSummarizing] = useState(false);
   const [summaries, setSummaries] = useState<StoredSummary[]>([]);
   const [showSummaries, setShowSummaries] = useState(false);
+  const [bets, setBets] = useState<Bet[]>([]); // 挂着的账（还在赌的假设）
   const [voice, setVoice] = useState("苏打");
   const [showVoices, setShowVoices] = useState(false);
   // 账号 + 云端历史
@@ -284,6 +289,12 @@ export default function Page() {
   }, [messages]);
 
   // ---------- 云端历史 ----------
+  const refreshBets = useCallback(async () => {
+    const t = tokenRef.current;
+    if (!t) return;
+    setBets(await listBets(t));
+  }, []);
+
   const refreshHistory = useCallback(async () => {
     const t = tokenRef.current;
     if (!t) return;
@@ -311,6 +322,7 @@ export default function Page() {
   useEffect(() => {
     if (!auth.userId || !auth.token) return;
     refreshHistory();
+    refreshBets();
     if (messages.length >= 2 && !convIdRef.current) persistCloud(messages);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.userId, auth.token]);
@@ -378,8 +390,14 @@ export default function Page() {
     setSummarizing(false);
     if (s) {
       setSummary(s);
-      saveSummary(s);
+      const stored = saveSummary(s);
       setSummaries(loadSummaries());
+      // 「还在赌」的记进账本——到期问道会主动翻出来问（COUNTERPARTY 职能②）
+      const t = tokenRef.current;
+      if (t)
+        recordBets(t, stored).then((n) => {
+          if (n) refreshBets();
+        });
     }
   }, [messages, summarizing]);
 
@@ -950,6 +968,13 @@ export default function Page() {
       {showSummaries && (
         <SummaryList
           items={summaries}
+          bets={bets}
+          onSettle={async (id, st) => {
+            const t = tokenRef.current;
+            if (!t) return;
+            await settleBet(t, id, st);
+            refreshBets();
+          }}
           signedIn={!!auth.userId}
           syncedCount={syncedCount}
           onSignIn={() => {
@@ -1347,6 +1372,8 @@ function SummaryCard({
 
 function SummaryList({
   items,
+  bets,
+  onSettle,
   signedIn,
   syncedCount,
   onSignIn,
@@ -1354,6 +1381,8 @@ function SummaryList({
   onClose,
 }: {
   items: StoredSummary[];
+  bets: Bet[];
+  onSettle: (id: string, status: "held" | "broken" | "dropped") => void;
   signedIn: boolean;
   syncedCount: number;
   onSignIn: () => void;
@@ -1374,6 +1403,31 @@ function SummaryList({
           {signedIn && syncedCount > 0 && ` · 已同步 ${syncedCount} 条上云`}
         </div>
         <div className="drawer-list">
+          {bets.length > 0 && (
+            <div className="bets">
+              <div className="bets-head">
+                还没验的 {bets.length} 笔
+                {bets.some((b) => b.overdue) && (
+                  <span className="bets-overdue">
+                    · {bets.filter((b) => b.overdue).length} 笔到期了
+                  </span>
+                )}
+              </div>
+              {bets.map((b) => (
+                <div className={"bet" + (b.overdue ? " bet-due" : "")} key={b.id}>
+                  <div className="bet-claim">{b.claim}</div>
+                  {b.basis && <div className="bet-basis">“{b.basis}”</div>}
+                  <div className="bet-acts">
+                    <button onClick={() => onSettle(b.id, "held")}>验了，成立</button>
+                    <button onClick={() => onSettle(b.id, "broken")}>验了，不成立</button>
+                    <button className="bet-drop" onClick={() => onSettle(b.id, "dropped")}>
+                      不验了
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {items.map((s) => (
             <div className="sum-row" key={s.id}>
               <div className="sum-row-main">
