@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="问道推理管线：从麦克风到耳朵的八道工序、提示词两档装配、三条旁路、延迟预算与护栏位置。">
+<title>问道 · 推理管线</title>
+<style>
+  :root {
+    --ground: #f6f4ef;
+    --panel: #fffdf9;
+    --line: #e0d9cb;
+    --line-soft: #ebe5d9;
+    --ink: #22201b;
+    --ink-dim: #6a6459;
+    --ink-faint: #9b9486;
+    --gold: #8f6f34;
+    --gold-soft: rgba(143, 111, 52, 0.10);
+    --slate: #4f6a9c;
+    --slate-soft: rgba(79, 106, 156, 0.10);
+    --sage: #4d7a60;
+    --sage-soft: rgba(77, 122, 96, 0.10);
+    --ember: #a8503c;
+    --ember-soft: rgba(168, 80, 60, 0.10);
+
+    --serif: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif;
+    --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0d0f13;
+      --panel: #14171e;
+      --line: #262b36;
+      --line-soft: #1d212a;
+      --ink: #e8e6e1;
+      --ink-dim: #a6a49e;
+      --ink-faint: #6f6d68;
+      --gold: #c9a267;
+      --gold-soft: rgba(201, 162, 103, 0.13);
+      --slate: #7d94c4;
+      --slate-soft: rgba(125, 148, 196, 0.13);
+      --sage: #7fa88c;
+      --sage-soft: rgba(127, 168, 140, 0.13);
+      --ember: #d98a7b;
+      --ember-soft: rgba(217, 138, 123, 0.13);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0d0f13; --panel: #14171e; --line: #262b36; --line-soft: #1d212a;
+    --ink: #e8e6e1; --ink-dim: #a6a49e; --ink-faint: #6f6d68;
+    --gold: #c9a267; --gold-soft: rgba(201,162,103,.13);
+    --slate: #7d94c4; --slate-soft: rgba(125,148,196,.13);
+    --sage: #7fa88c; --sage-soft: rgba(127,168,140,.13);
+    --ember: #d98a7b; --ember-soft: rgba(217,138,123,.13);
+  }
+  :root[data-theme="light"] {
+    --ground: #f6f4ef; --panel: #fffdf9; --line: #e0d9cb; --line-soft: #ebe5d9;
+    --ink: #22201b; --ink-dim: #6a6459; --ink-faint: #9b9486;
+    --gold: #8f6f34; --gold-soft: rgba(143,111,52,.10);
+    --slate: #4f6a9c; --slate-soft: rgba(79,106,156,.10);
+    --sage: #4d7a60; --sage-soft: rgba(77,122,96,.10);
+    --ember: #a8503c; --ember-soft: rgba(168,80,60,.10);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 56px 24px 88px; }
+
+  header { border-bottom: 1px solid var(--line); padding-bottom: 30px; margin-bottom: 44px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 2.5px; color: var(--gold);
+    text-transform: uppercase; margin-bottom: 12px;
+  }
+  h1 {
+    font-family: var(--serif); font-size: clamp(30px, 5vw, 42px); font-weight: 600;
+    letter-spacing: 3px; margin: 0 0 14px; text-wrap: balance;
+  }
+  .thesis { font-size: 17px; color: var(--ink-dim); max-width: 60ch; margin: 0; }
+  .thesis em { font-style: normal; color: var(--gold); }
+
+  section { margin-top: 56px; }
+  h2 {
+    font-family: var(--serif); font-size: 24px; font-weight: 600; letter-spacing: 1.5px;
+    margin: 0 0 6px; text-wrap: balance;
+  }
+  .sub { color: var(--ink-faint); font-size: 14px; margin: 0 0 24px; }
+  p { max-width: 66ch; color: var(--ink-dim); }
+  strong { color: var(--ink); font-weight: 600; }
+
+  figure { margin: 0; }
+  figure svg { display: block; width: 100%; max-width: 100%; height: auto; }
+  .figscroll { overflow-x: auto; }
+  figcaption {
+    font-size: 13px; color: var(--ink-faint); margin-top: 14px;
+    padding-top: 12px; border-top: 1px solid var(--line-soft); max-width: 70ch;
+  }
+
+  /* ---- SVG 语义类 ---- */
+  .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+  .box-gold { fill: var(--gold-soft); stroke: var(--gold); stroke-width: 1.4; }
+  .box-slate { fill: var(--slate-soft); stroke: var(--slate); }
+  .box-sage { fill: var(--sage-soft); stroke: var(--sage); }
+  .box-ember { fill: var(--ember-soft); stroke: var(--ember); stroke-dasharray: 4 3; }
+  .t { fill: var(--ink); font-family: var(--sans); font-size: 13px; }
+  .t-title { fill: var(--ink); font-family: var(--sans); font-size: 13.5px; font-weight: 600; }
+  .t-dim { fill: var(--ink-dim); font-family: var(--sans); font-size: 11.5px; }
+  .t-mono { fill: var(--gold); font-family: var(--mono); font-size: 11.5px; }
+  .t-gold { fill: var(--gold); font-family: var(--sans); font-size: 12px; font-weight: 600; }
+  .t-slate { fill: var(--slate); font-family: var(--sans); font-size: 12px; font-weight: 600; }
+  .t-sage { fill: var(--sage); font-family: var(--sans); font-size: 12px; font-weight: 600; }
+  .t-ember { fill: var(--ember); font-family: var(--sans); font-size: 11.5px; }
+  .flow { stroke: var(--ink-faint); stroke-width: 1.3; fill: none; }
+  .flow-gold { stroke: var(--gold); stroke-width: 1.8; fill: none; }
+  .flow-loop { stroke: var(--sage); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .rule { stroke: var(--line); stroke-width: 1; }
+
+  /* ---- 旁路卡片 ---- */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px;
+  }
+  .card-tag {
+    font-size: 11px; letter-spacing: 1.2px; font-weight: 600;
+    margin-bottom: 8px; display: inline-block;
+  }
+  .card h3 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+  .card p { font-size: 13.5px; margin: 0; line-height: 1.7; max-width: none; }
+  .c-gold .card-tag { color: var(--gold); }
+  .c-sage .card-tag { color: var(--sage); }
+  .c-slate .card-tag { color: var(--slate); }
+
+  /* ---- 表 ---- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line-soft); }
+  thead th { background: var(--panel); font-size: 12px; letter-spacing: .6px; color: var(--ink-dim); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-dim); }
+  td.win { color: var(--gold); font-weight: 600; }
+  tr.total td { border-top: 1px solid var(--line); font-weight: 600; color: var(--ink); }
+
+  /* ---- 护栏列表 ---- */
+  .guards { display: flex; flex-direction: column; gap: 2px; }
+  .guard { display: flex; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line-soft); align-items: baseline; }
+  .guard:last-child { border-bottom: none; }
+  .guard-where {
+    flex: 0 0 148px; font-family: var(--mono); font-size: 12px; color: var(--ember);
+  }
+  .guard-what { flex: 1; font-size: 14px; color: var(--ink-dim); }
+  .guard-what b { color: var(--ink); font-weight: 600; }
+
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
+           font-size: 12.5px; color: var(--ink-faint); letter-spacing: .5px; }
+
+  .theme-toggle {
+    position: fixed; right: 20px; bottom: 20px; z-index: 10;
+    background: var(--panel); color: var(--ink-dim);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 9px 16px; font-family: var(--sans); font-size: 12.5px;
+    cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.10);
+  }
+  .theme-toggle:hover { color: var(--gold); border-color: var(--gold); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  @media (print) { .theme-toggle { display: none; } }
+
+  @media (max-width: 700px) {
+    .cards { grid-template-columns: 1fr; }
+    .guard { flex-direction: column; gap: 4px; }
+    .guard-where { flex: none; }
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">问道 · 系统说明</div>
+    <h1>推理管线</h1>
+    <p class="thesis">
+      一句话从<em>麦克风</em>到<em>耳朵</em>，中间经过八道工序。整条链路的设计目标只有一个：
+      让"你说完"到"听见第一声"控制在 3 秒内，而不牺牲教练的锋利。
+    </p>
+  </header>
+
+  <section>
+    <h2>主链路</h2>
+    <p class="sub">听 → 识别 → 装配 → 生成 → 切块 → 合成 → 播放 → 回到听</p>
+
+    <figure>
+      <div class="figscroll">
+        <svg viewBox="0 0 900 1160" role="img"
+             aria-label="问道推理管线：浏览器录音与静音检测后上传 16kHz WAV 到 ASR 转成文字；chat 接口依次做限流、消息清洗、提示词装配、可选的深脑背景检索、语音模式关思考，再交给 MiMo 流式生成；输出按整句切块后逐块合成 PCM16 并用 Web Audio 无缝拼接播放；播完在通话模式下自动回到录音。">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,1 L9,5 L0,9 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <!-- 泳道标题 -->
+          <text class="t-slate" x="24" y="26">听</text>
+          <line class="rule" x1="24" y1="34" x2="80" y2="34"/>
+          <text class="t-gold" x="24" y="330">想</text>
+          <line class="rule" x1="24" y1="338" x2="80" y2="338"/>
+          <text class="t-sage" x="24" y="806">说</text>
+          <line class="rule" x1="24" y1="814" x2="80" y2="814"/>
+
+          <!-- 1 用户说话 -->
+          <rect class="box box-slate" x="300" y="12" width="300" height="46" rx="10"/>
+          <text class="t-title" x="450" y="40" text-anchor="middle">用户说话</text>
+
+          <g color="var(--ink-faint)">
+            <line class="flow" x1="450" y1="58" x2="450" y2="96" marker-end="url(#ar)"/>
+          </g>
+          <text class="t-dim" x="462" y="82">短按=免手 · 长按=对讲机</text>
+
+          <!-- 2 录音 -->
+          <rect class="box box-slate" x="300" y="98" width="300" height="74" rx="10"/>
+          <text class="t-title" x="316" y="122">浏览器录音 · 静音检测</text>
+          <text class="t-dim" x="316" y="142">说完静音 650ms 自动收尾</text>
+          <text class="t-dim" x="316" y="160">对讲机模式：松手才收尾，不靠静音</text>
+
+          <g color="var(--ink-faint)">
+            <line class="flow" x1="450" y1="172" x2="450" y2="210" marker-end="url(#ar)"/>
+          </g>
+          <text class="t-dim" x="462" y="196">降采样 16kHz WAV · 体积降到 1/3</text>
+
+          <!-- 3 ASR -->
+          <rect class="box box-slate" x="300" y="212" width="300" height="66" rx="10"/>
+          <text class="t-mono" x="316" y="234">POST /api/asr</text>
+          <text class="t-dim" x="316" y="254">MiMo mimo-v2.5-asr</text>
+          <text class="t-dim" x="316" y="270">音频放 user 消息的 input_audio</text>
+
+          <g color="var(--ink-faint)">
+            <line class="flow" x1="450" y1="278" x2="450" y2="316" marker-end="url(#ar)"/>
+          </g>
+          <text class="t-dim" x="462" y="302">识别出的文字</text>
+
+          <!-- 4 chat 大盒 -->
+          <rect class="box box-gold" x="300" y="318" width="300" height="252" rx="12"/>
+          <text class="t-mono" x="316" y="342">POST /api/chat</text>
+          <line class="rule" x1="316" y1="352" x2="584" y2="352"/>
+
+          <text class="t" x="316" y="376">① 限流　<tspan class="t-dim">30 次/分/IP</tspan></text>
+          <text class="t" x="316" y="404">② 清洗　<tspan class="t-dim">最近 40 条 · 折叠同角色</tspan></text>
+          <text class="t" x="316" y="432">③ 装配提示词</text>
+          <text class="t-dim" x="332" y="450">语音档 5.7k 字 / 完整档 88k 字</text>
+          <text class="t" x="316" y="478">④ 取背景　<tspan class="t-dim">仅限白名单本人</tspan></text>
+          <text class="t" x="316" y="506">⑤ 语音模式：<tspan class="t-gold">关掉思考</tspan></text>
+          <text class="t-dim" x="316" y="534">模型 mimo-v2.5（不用 pro：解码快 3.7 倍）</text>
+          <text class="t-dim" x="316" y="556">首句要求 ≤12 字，让第一声尽早出来</text>
+
+          <!-- 旁路：grounding -->
+          <rect class="box" x="632" y="440" width="244" height="76" rx="10"/>
+          <text class="t-title" x="648" y="464">深脑 · 取背景</text>
+          <text class="t-dim" x="648" y="484">search_brain（3–4 秒）</text>
+          <text class="t-dim" x="648" y="502">硬超时不等，结果进缓存下轮用</text>
+          <g color="var(--gold)">
+            <line class="flow-gold" x1="600" y1="478" x2="628" y2="478" marker-end="url(#ar)"/>
+            <line class="flow-gold" x1="628" y1="492" x2="600" y2="492" marker-end="url(#ar)"/>
+          </g>
+
+          <g color="var(--gold)">
+            <line class="flow-gold" x1="450" y1="570" x2="450" y2="608" marker-end="url(#ar)"/>
+          </g>
+
+          <!-- 5 生成 -->
+          <rect class="box box-gold" x="300" y="610" width="300" height="60" rx="10"/>
+          <text class="t-title" x="450" y="634" text-anchor="middle">MiMo v2.5 · 流式生成</text>
+          <text class="t-dim" x="450" y="654" text-anchor="middle">边生成边往下走，不等整段</text>
+
+          <g color="var(--ink-faint)">
+            <line class="flow" x1="450" y1="670" x2="450" y2="708" marker-end="url(#ar)"/>
+          </g>
+          <text class="t-dim" x="462" y="694">逐字流出</text>
+
+          <!-- 6 切块 -->
+          <rect class="box box-sage" x="300" y="710" width="300" height="74" rx="10"/>
+          <text class="t-title" x="316" y="734">切成可朗读的块</text>
+          <text class="t-dim" x="316" y="754">第一块：逗号处就切（抢首声）</text>
+          <text class="t-dim" x="316" y="772">之后：按整句切，听感自然</text>
+
+          <g color="var(--ink-faint)">
+            <line class="flow" x1="450" y1="784" x2="450" y2="822" marker-end="url(#ar)"/>
+          </g>
+          <text class="t-dim" x="462" y="808">一块一块地送</text>
+
+          <!-- 7 TTS -->
+          <rect class="box box-sage" x="300" y="824" width="300" height="66" rx="10"/>
+          <text class="t-mono" x="316" y="846">POST /api/tts</text>
+          <text class="t-dim" x="316" y="866">MiMo TTS → PCM16 24kHz 流</text>
+          <text class="t-dim" x="316" y="882">同文本同音色命中缓存则零请求</text>
+
+          <g color="var(--ink-faint)">
+            <line class="flow" x1="450" y1="890" x2="450" y2="928" marker-end="url(#ar)"/>
+          </g>
+
+          <!-- 8 播放 -->
+          <rect class="box box-sage" x="300" y="930" width="300" height="70" rx="10"/>
+          <text class="t-title" x="316" y="954">Web Audio 无缝拼接播放</text>
+          <text class="t-dim" x="316" y="974">共用一条时间轴，块与块之间不断音</text>
+          <text class="t-dim" x="316" y="990">合成下一块与播放当前块重叠进行</text>
+
+          <!-- 回到听 的环 -->
+          <g color="var(--sage)">
+            <path class="flow-loop" d="M300 965 L200 965 L200 135 L296 135" marker-end="url(#ar)"/>
+          </g>
+          <text class="t-sage" x="112" y="546">播完自动接着听</text>
+          <text class="t-dim" x="112" y="564">（仅通话模式）</text>
+
+          <!-- 收尾旁路 -->
+          <line class="rule" x1="632" y1="930" x2="876" y2="930" stroke-dasharray="3 3"/>
+          <text class="t-dim" x="632" y="952">一场结束后：</text>
+          <text class="t-dim" x="632" y="972">提炼小结 → 存下来 → 投喂深脑</text>
+        </svg>
+      </div>
+      <figcaption>
+        金色是核心推理路径，青灰是输入侧，苔绿是输出侧。虚线环是通话模式的闭合点——
+        问道说完自动回到录音，这一条让它从"一问一答"变成"打电话"。
+        右侧两条是旁路：取背景只对白名单本人开放，收尾沉淀在对话结束后才跑。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>提示词是怎么拼的</h2>
+    <p class="sub">同一个大脑，两种装法——语音要快，打字要深</p>
+
+    <figure>
+      <div class="figscroll">
+        <svg viewBox="0 0 900 400" role="img"
+             aria-label="提示词分层对比：语音档由安全边界、语音约束、身份、以及技能文件中的七个行为章节组成，约 5700 字；完整档在此基础上加入研究流程、五模块输出、高级模式与 68 个思维元件明细，约 88000 字。">
+          <text class="t-gold" x="150" y="24" text-anchor="middle">语音档 · 约 5,700 字</text>
+          <text class="t-dim" x="150" y="42" text-anchor="middle">首字 438ms</text>
+
+          <rect class="box box-ember" x="30" y="60" width="240" height="42" rx="8"/>
+          <text class="t-title" x="150" y="80" text-anchor="middle">第 0 层 · 安全边界</text>
+          <text class="t-ember" x="150" y="96" text-anchor="middle">凌驾一切规则</text>
+
+          <rect class="box box-gold" x="30" y="110" width="240" height="40" rx="8"/>
+          <text class="t" x="150" y="128" text-anchor="middle">语音约束</text>
+          <text class="t-dim" x="150" y="144" text-anchor="middle">短 · 口语 · 首句 ≤12 字</text>
+
+          <rect class="box" x="30" y="158" width="240" height="34" rx="8"/>
+          <text class="t" x="150" y="180" text-anchor="middle">身份与工作方式</text>
+
+          <rect class="box box-gold" x="30" y="200" width="240" height="76" rx="8"/>
+          <text class="t-title" x="150" y="222" text-anchor="middle">对话引导引擎</text>
+          <text class="t-dim" x="150" y="240" text-anchor="middle">逼 × 化 · 11 招 · 六信号</text>
+          <text class="t-dim" x="150" y="258" text-anchor="middle">收尾分寸 · 输出风格 · 反机械化</text>
+
+          <line class="rule" x1="440" y1="20" x2="440" y2="380" stroke-dasharray="4 4"/>
+
+          <text class="t-slate" x="700" y="24" text-anchor="middle">完整档 · 约 88,000 字</text>
+          <text class="t-dim" x="700" y="42" text-anchor="middle">首字 1,460ms · 打字与深度模式用</text>
+
+          <rect class="box box-ember" x="580" y="60" width="240" height="30" rx="8"/>
+          <text class="t" x="700" y="80" text-anchor="middle">第 0 层 · 安全边界</text>
+          <rect class="box box-gold" x="580" y="94" width="240" height="28" rx="8"/>
+          <text class="t" x="700" y="113" text-anchor="middle">语音约束</text>
+          <rect class="box" x="580" y="126" width="240" height="28" rx="8"/>
+          <text class="t" x="700" y="145" text-anchor="middle">身份与工作方式</text>
+          <rect class="box box-gold" x="580" y="158" width="240" height="30" rx="8"/>
+          <text class="t" x="700" y="178" text-anchor="middle">对话引导引擎</text>
+
+          <rect class="box box-slate" x="580" y="196" width="240" height="30" rx="8"/>
+          <text class="t" x="700" y="216" text-anchor="middle">研究流程 · 五模块 · 高级模式</text>
+          <rect class="box box-slate" x="580" y="230" width="240" height="52" rx="8"/>
+          <text class="t-title" x="700" y="252" text-anchor="middle">68 个思维元件明细</text>
+          <text class="t-dim" x="700" y="270" text-anchor="middle">华夏 28 · 西方 40</text>
+
+          <text class="t-dim" x="150" y="310">语音场景砍掉的，是<tspan class="t-gold">用不上</tspan>的，</text>
+          <text class="t-dim" x="150" y="330">不是<tspan class="t-gold">有用</tspan>的——安全、引擎、</text>
+          <text class="t-dim" x="150" y="350">收尾、风格、反机械化一条没动。</text>
+
+          <text class="t-dim" x="580" y="310">元件明细对短口语回答是冗余：</text>
+          <text class="t-dim" x="580" y="330">引擎段已经承载了全部行为，</text>
+          <text class="t-dim" x="580" y="350">明细只在深度分析时才值这个延迟。</text>
+        </svg>
+      </div>
+      <figcaption>
+        两档共享同一份技能文件，区别只在取哪几章。砍掉近两万字后首字延迟降到三分之一，
+        而危机识别、逼×化引导、会收尾这些行为经回归测试全部保留。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>三条旁路</h2>
+    <p class="sub">不在主链路上，但决定问道能不能"越用越懂你"</p>
+    <div class="cards">
+      <div class="card c-gold">
+        <span class="card-tag">向下取</span>
+        <h3>对话前，调你的背景</h3>
+        <p>去深脑检索相关的既有判断，拼进提示词，于是它问出的是"懂你"的问题。检索要 3–4 秒，所以设了硬超时——到点就走，后台跑完存缓存，下一轮直接命中。</p>
+      </div>
+      <div class="card c-sage">
+        <span class="card-tag">收尾</span>
+        <h3>一场结束，提炼成判断</h3>
+        <p>用问道自己的引擎，把这场对话里"你想清楚了什么"固化成判断（想清楚了／还在赌／待解），每条附你自己的原话做依据。既是你能带走的，也是喂给深脑的弹药。</p>
+      </div>
+      <div class="card c-slate">
+        <span class="card-tag">向上喂</span>
+        <h3>沉淀跟着你走</h3>
+        <p>小结存进问道自己的表、按账号隔离；深脑用同一个账号即可读到。不用一把全局钥匙往别人大脑里写——那是越权。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>延迟预算</h2>
+    <p class="sub">服务器侧实测中位数。优化的依据是分段测量，不是猜</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>环节</th><th style="text-align:right">优化前</th><th style="text-align:right">现在</th><th>关键动作</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>等静音判定说完</td><td class="num">900</td><td class="num">650</td><td>阈值调紧</td></tr>
+          <tr><td>语音识别</td><td class="num">765</td><td class="num">854</td><td>降采样 16kHz，移动网省更多</td></tr>
+          <tr><td>生成到第一块可朗读</td><td class="num">3 526</td><td class="num win">860</td><td>首句 ≤12 字 · 首块逗号切 · 提示词瘦身</td></tr>
+          <tr><td>合成出第一声</td><td class="num">693</td><td class="num">665</td><td>流式 PCM16</td></tr>
+          <tr class="total"><td>说完到听见</td><td class="num">5 884</td><td class="num win">3 029</td><td>快了将近一半</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px">
+      最大的一块省在<strong>第一句的长度</strong>上。原来首句 43 个字——首字 1.5 秒就出来了，
+      却要等整句凑齐才肯开口，白等两秒。让它先说一句短的接住你，再展开，这一条就省了 1.26 秒。
+    </p>
+  </section>
+
+  <section>
+    <h2>护栏在哪</h2>
+    <p class="sub">每一道都挡在花钱或泄露之前</p>
+    <div class="guards">
+      <div class="guard">
+        <div class="guard-where">/api/chat</div>
+        <div class="guard-what"><b>限流 30 次/分/IP</b>，按 nginx 注入的真实 IP 分桶——取转发头的第一个值可被伪造，那是我修过的高危漏洞。</div>
+      </div>
+      <div class="guard">
+        <div class="guard-where">取背景 · 投喂</div>
+        <div class="guard-what"><b>必须已登录且在白名单</b>，默认关闭。服务端只有一把深脑钥匙，不设门禁等于所有访客都在读同一个人的隐私。</div>
+      </div>
+      <div class="guard">
+        <div class="guard-where">提示词第 0 层</div>
+        <div class="guard-what"><b>危机识别</b>：用户流露严重痛苦时停掉全部教练动作，接住他，把国家心理援助热线递过去。这条压过"要简短""不给答案"。</div>
+      </div>
+      <div class="guard">
+        <div class="guard-where">/api/asr</div>
+        <div class="guard-what">上传 <b>8MB 上限</b>，挡内存耗尽。</div>
+      </div>
+      <div class="guard">
+        <div class="guard-where">渲染层</div>
+        <div class="guard-what">模型输出经<b>消毒</b>后才插进页面，防止被诱导吐出可执行脚本。</div>
+      </div>
+      <div class="guard">
+        <div class="guard-where">全链路</div>
+        <div class="guard-what">密钥<b>只在服务端</b>，前端拿不到；应用只监听本机，一律经反向代理。</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>问道 · 深脑（DeepBrain）出品 · 本页依据线上代码与实测数据绘制</footer>
+</div>
+
+<script>
+  // 单文件版自带明暗切换：默认跟随系统，点右下角按钮手动覆盖
+  (function () {
+    var k = "wendao-pipeline-theme";
+    var saved = null;
+    try { saved = localStorage.getItem(k); } catch (e) {}
+    if (saved) document.documentElement.setAttribute("data-theme", saved);
+    var b = document.createElement("button");
+    b.className = "theme-toggle";
+    b.type = "button";
+    function label() {
+      var cur = document.documentElement.getAttribute("data-theme");
+      b.textContent = cur === "dark" ? "浅色" : cur === "light" ? "深色" : "切换主题";
+      b.setAttribute("aria-label", "切换明暗主题");
+    }
+    b.onclick = function () {
+      var cur = document.documentElement.getAttribute("data-theme");
+      var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = cur ? (cur === "dark" ? "light" : "dark") : (prefersDark ? "light" : "dark");
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem(k, next); } catch (e) {}
+      label();
+    };
+    label();
+    document.body.appendChild(b);
+  })();
+</script>
+</body>
+</html>
